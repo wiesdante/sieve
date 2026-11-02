@@ -37,7 +37,6 @@ the list is the order in the sidebar.
   output side by side, so the main action and its result are always visible.
 - **Check the UI on Windows before releasing.** Every push that touches the UI runs the
   *UI preview* workflow, which renders each page (and `load_demo()` if the page has it).
-
 - **Never block the UI thread.** Run network and file work with
   `sieve.ui.tasks.run_in_background`; it supports progress reporting and cancellation.
 - **Use the shared proxy pool** via `context.proxy_pool()` instead of tool-specific
