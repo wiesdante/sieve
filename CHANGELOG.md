@@ -6,6 +6,25 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-02
+
+### Changed
+
+- **Duplicate Remover** redesigned as a single screen: input and output side by side, options in a
+  toolbar and statistics next to the output, so cleaning and copying never require scrolling.
+  The divider between the panels can be dragged and its position is remembered.
+
+### Added
+
+- Duplicate Remover: **Yapıştır ve temizle** button that pastes from the clipboard and cleans in one click.
+- Duplicate Remover: **Oto. kopyala** option to copy the result to the clipboard as soon as cleaning finishes.
+- Duplicate Remover: `Ctrl+Shift+C` copies the result.
+
+### Fixed
+
+- Sidebar section heading no longer looks like a clickable item.
+- "GitHub & Updates" settings heading lost its ampersand.
+
 ## [0.2.0] - 2026-11-02
 
 ### Added
@@ -33,6 +52,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/wiesdante/sieve/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/wiesdante/sieve/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/wiesdante/sieve/releases/tag/v0.1.0

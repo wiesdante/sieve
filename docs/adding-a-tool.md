@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QLabel
 
 from sieve.context import AppContext
 from sieve.tools.base import Tool
-from sieve.ui.widgets import Page
+from sieve.ui.widgets import ToolPage
 
 
 class ExampleTool(Tool):
@@ -21,9 +21,8 @@ class ExampleTool(Tool):
     category = "Scraping"
 
     def create_widget(self, context: AppContext):
-        page = Page(self.name, self.description)
-        page.content.addWidget(QLabel("Tool UI goes here"))
-        page.finish()
+        page = ToolPage(self.name, self.description)
+        page.content.addWidget(QLabel("Tool UI goes here"), 1)
         return page
 ```
 
@@ -33,6 +32,11 @@ Add an instance to `all_tools()` in `src/sieve/tools/__init__.py`. The order of
 the list is the order in the sidebar.
 
 ## Guidelines
+
+- **Fit the tool in one screen.** Use `ToolPage` (no page scrolling) and put input and
+  output side by side, so the main action and its result are always visible.
+- **Check the UI on Windows before releasing.** Every push that touches the UI runs the
+  *UI preview* workflow, which renders each page (and `load_demo()` if the page has it).
 
 - **Never block the UI thread.** Run network and file work with
   `sieve.ui.tasks.run_in_background`; it supports progress reporting and cancellation.
