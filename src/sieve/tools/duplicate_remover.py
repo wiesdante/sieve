@@ -1,16 +1,20 @@
-"""Duplicate Remover: drop repeated lines from pasted text, entirely in the app."""
+"""Duplicate Remover: drop repeated lines from pasted text, entirely in the app.
+
+The page fits in one screen: options on top, input on the left, output on the
+right, so paste → clean → copy never needs scrolling.
+"""
 
 from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -18,6 +22,8 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -36,7 +42,7 @@ from sieve.core.dedupe import (
 from sieve.tools.base import Tool
 from sieve.ui import theme
 from sieve.ui.tasks import BackgroundTask, run_in_background
-from sieve.ui.widgets import Page, StatTile, format_number, muted_label, primary_button
+from sieve.ui.widgets import ToolPage, flash_button, format_number, muted_label, primary_button
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +64,32 @@ def run_job(text: str, options: DedupeOptions, progress=None, cancelled=None) ->
     return remove_duplicates(text.splitlines(), options, progress=progress, cancelled=cancelled)
 
 
-class DuplicateRemoverPage(Page):
+def _flat_button(text: str, tooltip: str = "") -> QPushButton:
+    button = QPushButton(text)
+    button.setProperty("flat", True)
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    if tooltip:
+        button.setToolTip(tooltip)
+    return button
+
+
+def _panel(title: str) -> tuple[QFrame, QVBoxLayout, QHBoxLayout]:
+    """A rounded panel with a header row; returns (panel, body layout, header layout)."""
+    panel = QFrame()
+    panel.setObjectName("Panel")
+    body = QVBoxLayout(panel)
+    body.setContentsMargins(14, 12, 14, 12)
+    body.setSpacing(8)
+    header = QHBoxLayout()
+    header.setSpacing(6)
+    label = QLabel(title)
+    label.setObjectName("PanelTitle")
+    header.addWidget(label)
+    body.addLayout(header)
+    return panel, body, header
+
+
+class DuplicateRemoverPage(ToolPage):
     def __init__(self, context: AppContext) -> None:
         super().__init__(DuplicateRemoverTool.name, DuplicateRemoverTool.description)
         self._context = context
@@ -66,56 +97,35 @@ class DuplicateRemoverPage(Page):
         self._task: BackgroundTask | None = None
         self._result: DedupeResult | None = None
 
-        self.content.addWidget(self._build_input())
-        self.content.addWidget(self._build_options())
-        self.content.addLayout(self._build_run_row())
-        self._results = self._build_results()
-        self._results.hide()
-        self.content.addWidget(self._results)
-        self.finish()
+        self.content.addWidget(self._build_toolbar())
 
-        shortcut = QShortcut(QKeySequence("Ctrl+Return"), self)
-        shortcut.activated.connect(self._run)
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter.setChildrenCollapsible(False)
+        self._splitter.setHandleWidth(12)
+        self._splitter.addWidget(self._build_input_panel())
+        self._splitter.addWidget(self._build_output_panel())
+        self._splitter.setSizes([1, 1])
+        saved = self._prefs.get("splitter")
+        if isinstance(saved, str) and saved:
+            self._splitter.restoreState(QByteArray.fromBase64(saved.encode("ascii")))
+        self._splitter.splitterMoved.connect(self._save_splitter)
+        self.content.addWidget(self._splitter, 1)
 
-    # ----------------------------------------------------------------- input
-    def _build_input(self) -> QGroupBox:
-        group = QGroupBox("Girdi")
-        layout = QVBoxLayout(group)
+        for keys in ("Ctrl+Return", "Ctrl+Enter"):
+            shortcut = QShortcut(QKeySequence(keys), self)
+            shortcut.activated.connect(self._run)
+        copy_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
+        copy_shortcut.activated.connect(self._copy_output)
 
-        self._input = QPlainTextEdit()
-        self._input.setPlaceholderText("Satırları buraya yapıştır...")
-        self._input.setMinimumHeight(200)
-        self._input.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self._input.textChanged.connect(self._update_input_info)
-        layout.addWidget(self._input)
+        self._show_result(None)
 
-        row = QHBoxLayout()
-        paste = QPushButton("Panodan yapıştır")
-        clear = QPushButton("Temizle")
-        paste.clicked.connect(self._paste_from_clipboard)
-        clear.clicked.connect(self._input.clear)
-        row.addWidget(paste)
-        row.addWidget(clear)
-        row.addStretch(1)
-        self._input_info = muted_label(wrap=False)
-        row.addWidget(self._input_info)
-        layout.addLayout(row)
-        self._update_input_info()
-        return group
-
-    def _update_input_info(self) -> None:
-        lines = self._input.blockCount() if self._input.toPlainText() else 0
-        self._input_info.setText(f"{format_number(lines)} satır")
-
-    def _paste_from_clipboard(self) -> None:
-        text = QGuiApplication.clipboard().text()
-        if text:
-            self._input.setPlainText(text)
-
-    # --------------------------------------------------------------- options
-    def _build_options(self) -> QGroupBox:
-        group = QGroupBox("Seçenekler")
-        layout = QVBoxLayout(group)
+    # --------------------------------------------------------------- toolbar
+    def _build_toolbar(self) -> QFrame:
+        bar = QFrame()
+        bar.setObjectName("Toolbar")
+        row = QHBoxLayout(bar)
+        row.setContentsMargins(14, 8, 14, 8)
+        row.setSpacing(18)
         defaults = DedupeOptions()
 
         def checkbox(key: str, text: str, tooltip: str) -> QCheckBox:
@@ -123,43 +133,39 @@ class DuplicateRemoverPage(Page):
             box.setToolTip(tooltip)
             box.setChecked(bool(self._prefs.get(key, getattr(defaults, key))))
             box.toggled.connect(self._save_options)
-            layout.addWidget(box)
+            row.addWidget(box)
             return box
 
         self._ignore_case = checkbox(
             "ignore_case",
-            "Büyük/küçük harf farkını yok say (case-insensitive)",
-            '"Apple" ve "apple" aynı satır sayılır. Türkçe İ/i doğru eşleşir.',
+            "Case-insensitive",
+            'Büyük/küçük harf farkı yok sayılır: "Apple" ve "apple" aynı satırdır. '
+            "Türkçe İ/i doğru eşleşir.",
         )
         self._collapse_ws = checkbox(
             "collapse_whitespace",
-            "Boşluk farklarını yok say (whitespace)",
+            "Whitespace'i yok say",
             "Satır içindeki birden fazla boşluk ve tab, tek boşluk gibi karşılaştırılır.",
         )
         self._remove_empty = checkbox(
-            "remove_empty",
-            "Boş satırları sil",
-            "Boş veya sadece boşluktan oluşan satırlar çıkarılır.",
+            "remove_empty", "Boş satırları sil", "Boş veya sadece boşluktan oluşan satırlar çıkarılır."
         )
         self._output_normalized = checkbox(
             "output_normalized",
-            "Çıktıyı normalize edilmiş haliyle yaz (küçük harf, tek boşluk)",
-            "Kapalıyken her satırın ilk geçtiği orijinal hali yazılır. "
-            "Açıkken eski script gibi küçük harfe çevrilmiş hali yazılır.",
+            "Normalize çıktı",
+            "Kapalıyken her satırın ilk geçtiği orijinal hali yazılır.\n"
+            "Açıkken eski script gibi küçük harfe çevrilmiş, tek boşluklu hali yazılır.",
         )
-
-        sort_row = QHBoxLayout()
-        sort_row.addWidget(QLabel("Sıralama:"))
+        row.addStretch(1)
+        row.addWidget(muted_label("Sıralama", wrap=False))
         self._sort = QComboBox()
         for key, label in SORT_MODES.items():
             self._sort.addItem(label, key)
         index = self._sort.findData(self._prefs.get("sort", defaults.sort))
         self._sort.setCurrentIndex(max(index, 0))
         self._sort.currentIndexChanged.connect(self._save_options)
-        sort_row.addWidget(self._sort)
-        sort_row.addStretch(1)
-        layout.addLayout(sort_row)
-        return group
+        row.addWidget(self._sort)
+        return bar
 
     def _options(self) -> DedupeOptions:
         return DedupeOptions(
@@ -181,30 +187,142 @@ class DuplicateRemoverPage(Page):
         )
         self._context.save_settings()
 
-    # ------------------------------------------------------------------- run
-    def _build_run_row(self) -> QHBoxLayout:
-        row = QHBoxLayout()
+    def _save_splitter(self) -> None:
+        self._prefs["splitter"] = bytes(self._splitter.saveState().toBase64()).decode("ascii")
+        self._context.save_settings()
+
+    # ----------------------------------------------------------------- input
+    def _build_input_panel(self) -> QFrame:
+        panel, body, header = _panel("Girdi")
+        self._input_info = muted_label(wrap=False)
+        header.addWidget(self._input_info)
+        header.addStretch(1)
+        paste = _flat_button("Yapıştır", "Panodaki metni girdiye yapıştırır.")
+        clear = _flat_button("Boşalt", "Girdiyi temizler.")
+        paste.clicked.connect(self._paste_from_clipboard)
+        clear.clicked.connect(self._clear_input)
+        header.addWidget(paste)
+        header.addWidget(clear)
+
+        self._input = QPlainTextEdit()
+        self._input.setObjectName("Editor")
+        self._input.setPlaceholderText("Satırları buraya yapıştır...")
+        self._input.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self._input.textChanged.connect(self._update_input_info)
+        body.addWidget(self._input, 1)
+
+        footer = QHBoxLayout()
+        footer.setSpacing(8)
         self._run_button = primary_button("Duplicate'leri temizle")
         self._run_button.setToolTip("Ctrl+Enter")
+        self._run_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._run_button.clicked.connect(self._run)
+        self._paste_run_button = QPushButton("Yapıştır ve temizle")
+        self._paste_run_button.setToolTip(
+            "Panodaki metni yapıştırır ve hemen temizler. Tek tıkla sonuç."
+        )
+        self._paste_run_button.clicked.connect(self._paste_and_run)
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
         self._progress.hide()
         self._cancel_button = QPushButton("İptal")
         self._cancel_button.hide()
         self._cancel_button.clicked.connect(self._cancel)
-        row.addWidget(self._run_button)
-        row.addWidget(self._progress, 1)
-        row.addWidget(self._cancel_button)
-        row.addStretch(0)
-        return row
+        footer.addWidget(self._run_button, 1)
+        footer.addWidget(self._paste_run_button)
+        footer.addWidget(self._progress, 1)
+        footer.addWidget(self._cancel_button)
+        body.addLayout(footer)
 
+        self._update_input_info()
+        return panel
+
+    def _update_input_info(self) -> None:
+        lines = self._input.blockCount() if self._input.toPlainText() else 0
+        self._input_info.setText(f"· {format_number(lines)} satır")
+
+    def _paste_from_clipboard(self) -> bool:
+        text = QGuiApplication.clipboard().text()
+        if not text:
+            return False
+        self._input.setPlainText(text)
+        return True
+
+    def _clear_input(self) -> None:
+        self._input.clear()
+        self._input.setFocus()
+
+    def _paste_and_run(self) -> None:
+        if self._paste_from_clipboard():
+            self._run()
+        else:
+            flash_button(self._paste_run_button, "Pano boş")
+
+    # ---------------------------------------------------------------- output
+    def _build_output_panel(self) -> QFrame:
+        panel, body, header = _panel("Çıktı")
+        self._stats = QLabel()
+        self._stats.setObjectName("Stats")
+        self._stats.setTextFormat(Qt.TextFormat.RichText)
+        header.addWidget(self._stats)
+        header.addStretch(1)
+        self._copy_button = primary_button("Kopyala")
+        self._copy_button.setToolTip("Sonucun tamamını panoya kopyalar (Ctrl+Shift+C).")
+        self._copy_button.clicked.connect(self._copy_output)
+        header.addWidget(self._copy_button)
+
+        self._result_tabs = QTabWidget()
+        self._output = QPlainTextEdit()
+        self._output.setObjectName("Editor")
+        self._output.setReadOnly(True)
+        self._output.setPlaceholderText("Sonuç burada görünecek.")
+        self._output.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self._result_tabs.addTab(self._output, "Sonuç")
+
+        self._dup_table = QTableWidget(0, 2)
+        self._dup_table.setHorizontalHeaderLabels(["Satır", "Tekrar"])
+        self._dup_table.verticalHeader().hide()
+        self._dup_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._dup_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table_header = self._dup_table.horizontalHeader()
+        table_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        table_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self._result_tabs.addTab(self._dup_table, "Duplicates")
+        body.addWidget(self._result_tabs, 1)
+
+        footer = QHBoxLayout()
+        footer.setSpacing(6)
+        self._to_input_button = _flat_button(
+            "Girdiye taşı", "Sonuç üzerinde farklı seçeneklerle tekrar çalışmak için."
+        )
+        self._copy_dups_button = _flat_button(
+            "Duplicate listesini kopyala", "Tekrar eden satırları ve tekrar sayılarını kopyalar."
+        )
+        self._to_input_button.clicked.connect(self._use_as_input)
+        self._copy_dups_button.clicked.connect(self._copy_duplicates)
+        footer.addWidget(self._to_input_button)
+        footer.addWidget(self._copy_dups_button)
+        footer.addStretch(1)
+        self._auto_copy = QCheckBox("Sonucu otomatik kopyala")
+        self._auto_copy.setToolTip("Temizleme bitince sonuç kendiliğinden panoya kopyalanır.")
+        self._auto_copy.setChecked(bool(self._prefs.get("auto_copy", False)))
+        self._auto_copy.toggled.connect(self._save_auto_copy)
+        footer.addWidget(self._auto_copy)
+        body.addLayout(footer)
+        return panel
+
+    def _save_auto_copy(self, checked: bool) -> None:
+        self._prefs["auto_copy"] = checked
+        self._context.save_settings()
+
+    # ------------------------------------------------------------------- run
     def _run(self) -> None:
         if self._task is not None:
             return
         text = self._input.toPlainText()
         if not text.strip():
-            QMessageBox.information(self, "Duplicate Remover", "Önce temizlenecek metni yapıştır.")
+            self._input.setFocus()
+            flash_button(self._run_button, "Önce metin yapıştır")
             return
         self._set_running(True)
         self._task = run_in_background(
@@ -221,7 +339,8 @@ class DuplicateRemoverPage(Page):
             self._task.cancel()
 
     def _set_running(self, running: bool) -> None:
-        self._run_button.setEnabled(not running)
+        self._run_button.setVisible(not running)
+        self._paste_run_button.setVisible(not running)
         self._progress.setVisible(running)
         self._cancel_button.setVisible(running)
         self._progress.setValue(0)
@@ -243,78 +362,37 @@ class DuplicateRemoverPage(Page):
         self._set_running(False)
         self._result = result
         self._show_result(result)
+        if self._auto_copy.isChecked():
+            self._copy_output()
 
-    # --------------------------------------------------------------- results
-    def _build_results(self) -> QGroupBox:
-        group = QGroupBox("Sonuç")
-        layout = QVBoxLayout(group)
+    def _show_result(self, result: DedupeResult | None) -> None:
+        has_result = result is not None
+        for button in (self._copy_button, self._to_input_button, self._copy_dups_button):
+            button.setEnabled(has_result)
+        if result is None:
+            self._stats.setText("")
+            self._output.clear()
+            self._dup_table.setRowCount(0)
+            return
 
-        tiles = QHBoxLayout()
-        self._tile_total = StatTile("Toplam satır")
-        self._tile_empty = StatTile("Boş satır")
-        self._tile_removed = StatTile("Silinen duplicate")
-        self._tile_unique = StatTile("Unique satır")
-        for tile in (self._tile_total, self._tile_empty, self._tile_removed, self._tile_unique):
-            tiles.addWidget(tile)
-        layout.addLayout(tiles)
+        def stat(label: str, value: int, color: str | None = None) -> str:
+            number = format_number(value)
+            if color:
+                number = f'<span style="color:{color}; font-weight:600">{number}</span>'
+            else:
+                number = f'<span style="color:{theme.TEXT}; font-weight:600">{number}</span>'
+            return f"{label} {number}"
 
-        self._result_tabs = QTabWidget()
-        output_tab = QWidget()
-        output_layout = QVBoxLayout(output_tab)
-        output_layout.setContentsMargins(10, 10, 10, 10)
-        self._output = QPlainTextEdit()
-        self._output.setReadOnly(True)
-        self._output.setMinimumHeight(240)
-        self._output.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        output_layout.addWidget(self._output)
-        output_buttons = QHBoxLayout()
-        copy = primary_button("Sonucu kopyala")
-        use_as_input = QPushButton("Sonucu girdiye taşı")
-        use_as_input.setToolTip("Sonuç üzerinde farklı seçeneklerle tekrar çalışmak için.")
-        copy.clicked.connect(self._copy_output)
-        use_as_input.clicked.connect(self._use_as_input)
-        output_buttons.addWidget(copy)
-        output_buttons.addWidget(use_as_input)
-        output_buttons.addStretch(1)
-        self._output_note = muted_label(wrap=False)
-        output_buttons.addWidget(self._output_note)
-        output_layout.addLayout(output_buttons)
-        self._result_tabs.addTab(output_tab, "Çıktı")
-
-        dup_tab = QWidget()
-        dup_layout = QVBoxLayout(dup_tab)
-        dup_layout.setContentsMargins(10, 10, 10, 10)
-        self._dup_table = QTableWidget(0, 2)
-        self._dup_table.setHorizontalHeaderLabels(["Satır", "Tekrar"])
-        self._dup_table.verticalHeader().hide()
-        self._dup_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._dup_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        header = self._dup_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self._dup_table.setMinimumHeight(240)
-        dup_layout.addWidget(self._dup_table)
-        dup_buttons = QHBoxLayout()
-        copy_dups = QPushButton("Duplicate listesini kopyala")
-        copy_dups.clicked.connect(self._copy_duplicates)
-        dup_buttons.addWidget(copy_dups)
-        dup_buttons.addStretch(1)
-        self._dup_note = muted_label(wrap=False)
-        dup_buttons.addWidget(self._dup_note)
-        dup_layout.addLayout(dup_buttons)
-        self._result_tabs.addTab(dup_tab, "Duplicates")
-
-        layout.addWidget(self._result_tabs)
-        return group
-
-    def _show_result(self, result: DedupeResult) -> None:
-        self._tile_total.set_value(result.total)
-        self._tile_empty.set_value(result.empty)
-        self._tile_removed.set_value(result.removed, theme.WARNING if result.removed else None)
-        self._tile_unique.set_value(result.unique, theme.SUCCESS)
+        self._stats.setText(
+            "&nbsp;&nbsp;·&nbsp;&nbsp;".join([
+                stat("Toplam", result.total),
+                stat("Boş", result.empty),
+                stat("Silinen", result.removed, theme.WARNING if result.removed else None),
+                stat("Unique", result.unique, theme.SUCCESS),
+            ])
+        )
 
         self._output.setPlainText("\n".join(result.lines))
-        self._output_note.setText(f"{format_number(len(result.lines))} satır")
 
         rows = result.duplicates[:DUPLICATE_TABLE_LIMIT]
         self._dup_table.setRowCount(len(rows))
@@ -323,33 +401,35 @@ class DuplicateRemoverPage(Page):
             count_item = QTableWidgetItem(format_number(count))
             count_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self._dup_table.setItem(row, 1, count_item)
-        total_dups = len(result.duplicates)
-        self._result_tabs.setTabText(1, f"Duplicates ({format_number(total_dups)})")
-        if total_dups > DUPLICATE_TABLE_LIMIT:
-            self._dup_note.setText(
-                f"En çok tekrar eden {format_number(DUPLICATE_TABLE_LIMIT)} satır gösteriliyor; "
-                "kopyalama hepsini içerir."
-            )
-        else:
-            self._dup_note.setText("")
-
-        self._results.show()
-        self.ensureWidgetVisible(self._results)
+        self._result_tabs.setTabText(1, f"Duplicates ({format_number(len(result.duplicates))})")
+        self._result_tabs.setCurrentIndex(0)
 
     def _copy_output(self) -> None:
-        if self._result:
-            QGuiApplication.clipboard().setText("\n".join(self._result.lines))
-            self._output_note.setText("Sonuç panoya kopyalandı.")
+        if not self._result:
+            return
+        QGuiApplication.clipboard().setText("\n".join(self._result.lines))
+        flash_button(self._copy_button, "Kopyalandı ✓")
 
     def _copy_duplicates(self) -> None:
-        if not self._result or not self._result.duplicates:
-            self._dup_note.setText("Tekrar eden satır yok.")
+        if not self._result:
+            return
+        if not self._result.duplicates:
+            flash_button(self._copy_dups_button, "Tekrar eden satır yok")
             return
         lines = [f"{line}\t{count}" for line, count in self._result.duplicates]
         QGuiApplication.clipboard().setText("\n".join(lines))
-        self._dup_note.setText("Duplicate listesi panoya kopyalandı (satır ⇥ tekrar).")
+        flash_button(self._copy_dups_button, "Kopyalandı ✓")
+
+    def load_demo(self) -> None:
+        """Fill the page with sample data (used for CI screenshots)."""
+        sample = "\n".join(
+            ["https://example.com/a", "https://example.com/A ", "https://example.com/b", "",
+             "Ürün listesi", "ürün   listesi", "İstanbul", "istanbul", "https://example.com/c"] * 3
+        )
+        self._input.setPlainText(sample)
+        self._on_done(run_job(sample, self._options()))
 
     def _use_as_input(self) -> None:
         if self._result:
             self._input.setPlainText("\n".join(self._result.lines))
-            self.ensureWidgetVisible(self._input)
+            self._input.setFocus()

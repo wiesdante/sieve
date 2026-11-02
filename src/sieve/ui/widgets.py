@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QFrame,
@@ -38,25 +38,30 @@ def open_url(url: str) -> None:
     QDesktopServices.openUrl(QUrl(url))
 
 
-class StatTile(QFrame):
-    """A small labelled number, e.g. "Unique  12.345"."""
+def flash_button(button: QPushButton, text: str, duration_ms: int = 1500) -> None:
+    """Show a short confirmation on a button, then restore its label."""
+    original = button.property("originalText") or button.text()
+    button.setProperty("originalText", original)
+    button.setText(text)
+    QTimer.singleShot(duration_ms, lambda: button.setText(original))
 
-    def __init__(self, label: str) -> None:
+
+class ToolPage(QWidget):
+    """Non-scrolling page for tools: a compact header and a layout that fills the window."""
+
+    def __init__(self, title: str, subtitle: str = "") -> None:
         super().__init__()
-        self.setObjectName("StatTile")
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(2)
-        self._value = QLabel("—")
-        self._value.setObjectName("StatValue")
-        caption = QLabel(label)
-        caption.setObjectName("StatLabel")
-        layout.addWidget(self._value)
-        layout.addWidget(caption)
-
-    def set_value(self, value: int | None, color: str | None = None) -> None:
-        self._value.setText("—" if value is None else format_number(value))
-        self._value.setStyleSheet(f"color: {color};" if color else "")
+        self.content = QVBoxLayout(self)
+        self.content.setContentsMargins(24, 20, 24, 20)
+        self.content.setSpacing(12)
+        heading = QLabel(title)
+        heading.setObjectName("PageTitle")
+        self.content.addWidget(heading)
+        if subtitle:
+            sub = QLabel(subtitle)
+            sub.setObjectName("PageSubtitle")
+            sub.setWordWrap(True)
+            self.content.addWidget(sub)
 
 
 def format_number(value: int) -> str:

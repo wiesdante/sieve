@@ -175,6 +175,9 @@ class MainWindow(QMainWindow):
                     nav.setCurrentItem(item)
             nav.blockSignals(False)
 
+    def current_page(self) -> QWidget | None:
+        return self._stack.currentWidget()
+
     def current_page_key(self) -> str | None:
         current = self._stack.currentWidget()
         return next((key for key, page in self._pages.items() if page is current), None)

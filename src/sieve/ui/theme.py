@@ -185,19 +185,40 @@ QHeaderView::section {{
     font-weight: 600;
 }}
 
-/* Stat tiles */
-#StatTile {{
-    background: {BACKGROUND};
+/* Tool panels */
+#Panel {{
+    background: {SURFACE};
     border: 1px solid {BORDER};
-    border-radius: 8px;
+    border-radius: 10px;
 }}
-#StatValue {{
-    font-size: 16pt;
+#PanelTitle {{
+    font-size: 11pt;
     font-weight: 600;
 }}
-#StatLabel {{
+#Toolbar {{
+    background: {SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: 10px;
+}}
+#Stats {{
     color: {TEXT_MUTED};
-    font-size: 9pt;
+}}
+QSplitter::handle {{
+    background: transparent;
+}}
+QPlainTextEdit#Editor {{
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 10pt;
+}}
+QPushButton[flat="true"] {{
+    background: transparent;
+    border: 1px solid transparent;
+    color: {TEXT_MUTED};
+    padding: 5px 10px;
+}}
+QPushButton[flat="true"]:hover {{
+    background: {SURFACE_ALT};
+    color: {TEXT};
 }}
 
 QProgressBar {{

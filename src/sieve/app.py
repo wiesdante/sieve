@@ -41,9 +41,38 @@ def _install_exception_hook() -> None:
     sys.excepthook = hook
 
 
+def _run_smoke_test(app, window, screenshot_dir: str | None) -> int:
+    """Open every page and exit; used by CI. Optionally saves a screenshot of each page."""
+    from pathlib import Path
+
+    if screenshot_dir:
+        Path(screenshot_dir).mkdir(parents=True, exist_ok=True)
+        window.resize(1280, 800)
+        window.show()
+    for key in window.page_keys():
+        window.navigate(key)
+        app.processEvents()
+        if window.current_page_key() != key:
+            log.error("Smoke test could not open page %s", key)
+            return 1
+        if screenshot_dir:
+            name = key.replace(":", "_")
+            window.grab().save(str(Path(screenshot_dir) / f"{name}.png"))
+            page = window.current_page()
+            if hasattr(page, "load_demo"):
+                page.load_demo()
+                app.processEvents()
+                window.grab().save(str(Path(screenshot_dir) / f"{name}_demo.png"))
+    log.info("Smoke test passed")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
     smoke_test = "--smoke-test" in argv
+    screenshot_dir = next(
+        (arg.split("=", 1)[1] for arg in argv if arg.startswith("--screenshots=")), None
+    )
 
     configure_logging()
     log.info("Starting %s %s (frozen=%s)", APP_NAME, __version__, paths.is_frozen())
@@ -65,15 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     window = MainWindow(AppContext())
 
     if smoke_test:
-        # Used by the release pipeline: build every page, then exit cleanly.
-        for key in window.page_keys():
-            window.navigate(key)
-            app.processEvents()
-            if window.current_page_key() != key:
-                log.error("Smoke test could not open page %s", key)
-                return 1
-        log.info("Smoke test passed")
-        return 0
+        return _run_smoke_test(app, window, screenshot_dir)
 
     updater.clean_old_downloads()
     window.show()

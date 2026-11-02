@@ -1,0 +1,43 @@
+name: UI preview
+
+# Renders every page on Windows and uploads screenshots, so UI changes can be
+# reviewed before a release.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/sieve/ui/**"
+      - "src/sieve/tools/**"
+      - "src/sieve/app.py"
+  workflow_dispatch:
+
+jobs:
+  screenshots:
+    name: Render pages
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Render pages
+        timeout-minutes: 3
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m sieve --smoke-test --screenshots=screenshots
+          if ($LASTEXITCODE -ne 0) { throw "Rendering failed" }
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ui-screenshots
+          path: screenshots/*.png
+          retention-days: 7
