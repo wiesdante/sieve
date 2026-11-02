@@ -6,6 +6,24 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-02
+
+### Added
+
+- **Keyword Filter** tool: filter pasted text with a blacklist (remove lines that contain a
+  keyword) or a whitelist (keep only lines that contain a keyword).
+  - Both lists are saved automatically and survive restarts and updates.
+  - Options: ignore case (with correct Turkish İ/i handling), whole words only, skip empty lines.
+  - See the removed lines and how many lines each keyword matched, including keywords that
+    matched nothing.
+- The sidebar collapses to an icon rail while a tool is open, giving the tool the full width.
+  Use the button at the top to expand it and switch tools.
+- Icons for every sidebar item.
+
+### Changed
+
+- New application icon.
+
 ## [0.4.1] - 2026-11-02
 
 ### Fixed
@@ -73,7 +91,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/wiesdante/sieve/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/wiesdante/sieve/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/wiesdante/sieve/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/wiesdante/sieve/compare/v0.3.0...v0.3.1

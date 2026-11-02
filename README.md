@@ -25,6 +25,7 @@ and every tool shares the same settings, proxy pool and logging.
 | Tool | What it does |
 | --- | --- |
 | **Duplicate Remover** | Removes repeated lines from pasted text while keeping the first occurrence and the original order. |
+| **Keyword Filter** | Keeps or removes lines that contain any keyword from a saved blacklist or whitelist. |
 
 ## Features
 

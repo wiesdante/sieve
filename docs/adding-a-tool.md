@@ -19,6 +19,7 @@ class ExampleTool(Tool):
     name = "Example"
     description = "One line explaining what the tool does."
     category = "Scraping"
+    icon = "tool"                   # sidebar icon, see sieve/ui/icons.py
 
     def create_widget(self, context: AppContext):
         page = ToolPage(self.name, self.description)
@@ -45,5 +46,9 @@ the list is the order in the sidebar.
 - **Browser automation** should use the system Microsoft Edge
   (`channel="msedge"` in Playwright) so no browser has to be bundled.
 - **Keep logic separate from widgets** so it can be unit-tested without Qt.
+- **Data the user maintains** (keyword lists, presets) goes into `sieve.storage.JsonDocument`,
+  which lives in `%APPDATA%\\Sieve\\data` and survives restarts, updates and reinstalls.
+  Save it as the user edits and implement `save_state()` on the page; the main window
+  calls it when the app closes.
 - **Secrets** (API keys, logins) go into `context.credentials`, never into settings.
 - Add tests under `tests/` and an entry under `[Unreleased]` in `CHANGELOG.md`.
