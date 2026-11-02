@@ -6,6 +6,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-02
+
+### Fixed
+
+- Duplicate Remover: option labels in the toolbar were cut off in smaller windows.
+
 ## [0.4.0] - 2026-11-02
 
 ### Changed
@@ -67,7 +73,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/wiesdante/sieve/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/wiesdante/sieve/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/wiesdante/sieve/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/wiesdante/sieve/compare/v0.2.0...v0.3.0
