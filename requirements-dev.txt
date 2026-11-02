@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# Build, test and lint
+pyinstaller>=6.10,<7
+pytest>=8
+ruff>=0.6
+Pillow>=10

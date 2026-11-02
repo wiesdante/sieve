@@ -1,0 +1,5 @@
+# Runtime dependencies
+PySide6-Essentials>=6.7,<7
+requests>=2.32,<3
+PySocks>=1.7,<2
+packaging>=24
