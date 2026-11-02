@@ -62,7 +62,7 @@ class SettingsPage(Page):
 
     # ---------------------------------------------------------------- updates
     def _build_updates_group(self) -> QGroupBox:
-        group = QGroupBox("GitHub & Updates")
+        group = QGroupBox("GitHub && Updates")
         layout = QVBoxLayout(group)
 
         self._token_input = QLineEdit()

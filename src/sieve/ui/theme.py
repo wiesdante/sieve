@@ -62,6 +62,15 @@ QToolTip {{
     background: {ACCENT};
     color: white;
 }}
+#NavList::item:disabled {{
+    color: {TEXT_MUTED};
+    font-size: 8pt;
+    font-weight: 600;
+    padding: 14px 12px 4px 12px;
+}}
+#NavList::item:disabled:hover {{
+    background: transparent;
+}}
 #NavSection {{
     color: {TEXT_MUTED};
     font-size: 8pt;

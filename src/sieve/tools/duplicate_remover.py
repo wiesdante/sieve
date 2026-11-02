@@ -296,14 +296,14 @@ class DuplicateRemoverPage(ToolPage):
             "Girdiye taşı", "Sonuç üzerinde farklı seçeneklerle tekrar çalışmak için."
         )
         self._copy_dups_button = _flat_button(
-            "Duplicate listesini kopyala", "Tekrar eden satırları ve tekrar sayılarını kopyalar."
+            "Duplicate'leri kopyala", "Tekrar eden satırları ve tekrar sayılarını kopyalar."
         )
         self._to_input_button.clicked.connect(self._use_as_input)
         self._copy_dups_button.clicked.connect(self._copy_duplicates)
         footer.addWidget(self._to_input_button)
         footer.addWidget(self._copy_dups_button)
         footer.addStretch(1)
-        self._auto_copy = QCheckBox("Sonucu otomatik kopyala")
+        self._auto_copy = QCheckBox("Oto. kopyala")
         self._auto_copy.setToolTip("Temizleme bitince sonuç kendiliğinden panoya kopyalanır.")
         self._auto_copy.setChecked(bool(self._prefs.get("auto_copy", False)))
         self._auto_copy.toggled.connect(self._save_auto_copy)
