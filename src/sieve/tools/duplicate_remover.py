@@ -63,6 +63,7 @@ class DuplicateRemoverTool(Tool):
     name = "Duplicate Remover"
     description = "Removes repeated lines, keeping each line's first occurrence and the original order."
     category = "Text"
+    icon = "copy"
 
     def create_widget(self, context: AppContext) -> QWidget:
         return DuplicateRemoverPage(context)

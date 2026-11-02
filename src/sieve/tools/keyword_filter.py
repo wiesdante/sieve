@@ -72,6 +72,7 @@ class KeywordFilterTool(Tool):
     name = "Keyword Filter"
     description = "Filters lines with a saved blacklist or whitelist of keywords."
     category = "Text"
+    icon = "filter"
 
     def create_widget(self, context: AppContext) -> QWidget:
         return KeywordFilterPage(context)

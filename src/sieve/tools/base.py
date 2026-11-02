@@ -19,7 +19,9 @@ class Tool(ABC):
     #: One-line description shown on the home page.
     description: str = ""
     #: Group heading on the home page.
-    category: str = "Genel"
+    category: str = "General"
+    #: Sidebar icon name from ``sieve.ui.icons.ICONS``.
+    icon: str = "tool"
 
     @abstractmethod
     def create_widget(self, context: AppContext) -> QWidget:

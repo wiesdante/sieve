@@ -71,6 +71,20 @@ QToolTip {{
 #NavList::item:disabled:hover {{
     background: transparent;
 }}
+#NavList[collapsed="true"]::item {{
+    padding: 9px 12px;
+    margin: 1px 10px;
+}}
+#SidebarToggle {{
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 0;
+}}
+#SidebarToggle:hover {{
+    background: {SURFACE_ALT};
+    border-color: {BORDER};
+}}
 #NavSection {{
     color: {TEXT_MUTED};
     font-size: 8pt;
