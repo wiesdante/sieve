@@ -17,6 +17,13 @@ class AppContext:
     def save_settings(self) -> None:
         self.settings.save()
 
+    def tool_settings(self, tool_id: str) -> dict:
+        """Mutable preferences dict for one tool; call ``save_settings`` after changing it."""
+        stored = self.settings.tool_settings.get(tool_id)
+        if not isinstance(stored, dict):
+            stored = self.settings.tool_settings[tool_id] = {}
+        return stored
+
     def proxy_pool(self) -> ProxyPool | None:
         """The configured proxy pool, or ``None`` if proxies are turned off."""
         if not self.settings.proxy_enabled:

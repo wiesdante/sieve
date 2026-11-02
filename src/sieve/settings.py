@@ -25,6 +25,8 @@ class Settings:
     proxy_rotation: str = "round_robin"
     proxies: list[str] = field(default_factory=list)
     window_geometry: str = ""
+    #: Per-tool preferences, keyed by ``Tool.id``.
+    tool_settings: dict[str, dict] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:
