@@ -15,7 +15,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Settings page with encrypted GitHub token storage, proxy list, rotation mode and proxy health check.
 - Automatic update check on startup, with in-app download and silent installation of new releases.
 - Windows installer (per-user, no administrator rights required).
-- Release pipeline that builds, smoke-tests and publishes the installer for every version tag.
+- Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
 [Unreleased]: https://github.com/wiesdante/sieve/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/wiesdante/sieve/releases/tag/v0.1.0
