@@ -108,7 +108,7 @@ class KeywordFilterPage(ToolPage):
         self._splitter.addWidget(self._build_input_panel())
         self._splitter.addWidget(self._build_keywords_panel())
         self._splitter.addWidget(self._build_output_panel())
-        self._splitter.setSizes([4, 3, 4])
+        self._splitter.setSizes([10, 7, 10])
         saved = self._prefs.get("splitter")
         if isinstance(saved, str) and saved:
             self._splitter.restoreState(QByteArray.fromBase64(saved.encode("ascii")))
@@ -173,6 +173,8 @@ class KeywordFilterPage(ToolPage):
             "skip_empty", "Skip empty lines", "Drop empty lines in both modes."
         )
         row.addStretch(1)
+        self._mode_hint = muted_label(wrap=False)
+        row.addWidget(self._mode_hint)
         return bar
 
     def _apply_mode(self, mode: str, save: bool = True) -> None:
@@ -182,7 +184,7 @@ class KeywordFilterPage(ToolPage):
         self._mode_buttons[mode].setChecked(True)
         self._lists_stack.setCurrentWidget(self._list_editors[mode])
         self._keywords_title.setText("Blacklist" if mode == BLACKLIST else "Whitelist")
-        self._keywords_hint.setText(MODE_HINTS[mode])
+        self._mode_hint.setText(MODE_HINTS[mode])
         self._update_keyword_count()
         if save:
             self._prefs["mode"] = mode
@@ -280,9 +282,6 @@ class KeywordFilterPage(ToolPage):
         header.addWidget(self._keyword_count)
         header.addStretch(1)
 
-        self._keywords_hint = muted_label()
-        body.addWidget(self._keywords_hint)
-
         self._lists_stack = QStackedWidget()
         self._list_editors: dict[str, QPlainTextEdit] = {}
         for mode in (BLACKLIST, WHITELIST):
@@ -364,9 +363,10 @@ class KeywordFilterPage(ToolPage):
         hits_header = self._hits_table.horizontalHeader()
         hits_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         hits_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self._result_tabs.setUsesScrollButtons(False)
         self._result_tabs.addTab(self._output, "Result")
         self._result_tabs.addTab(self._removed, "Removed")
-        self._result_tabs.addTab(self._hits_table, "Keyword hits")
+        self._result_tabs.addTab(self._hits_table, "Hits")
         body.addWidget(self._result_tabs, 1)
 
         footer = QHBoxLayout()
@@ -495,8 +495,10 @@ class KeywordFilterPage(ToolPage):
 
         self._result_tabs.setTabText(1, f"Removed ({format_number(len(result.removed))})")
         unused = sum(1 for _, count in result.keyword_hits if count == 0)
-        self._result_tabs.setTabText(
-            2, f"Keyword hits ({unused} unused)" if unused else "Keyword hits"
+        self._result_tabs.setTabToolTip(
+            2,
+            f"How many lines each keyword matched. {unused} keywords matched nothing."
+            if unused else "How many lines each keyword matched.",
         )
         self._result_tabs.setCurrentIndex(0)
 
