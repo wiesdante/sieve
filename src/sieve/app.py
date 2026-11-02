@@ -69,6 +69,9 @@ def main(argv: list[str] | None = None) -> int:
         for key in window.page_keys():
             window.navigate(key)
             app.processEvents()
+            if window.current_page_key() != key:
+                log.error("Smoke test could not open page %s", key)
+                return 1
         log.info("Smoke test passed")
         return 0
 

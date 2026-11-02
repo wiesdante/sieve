@@ -155,7 +155,9 @@ class MainWindow(QMainWindow):
                 self._add_page(key, tool.create_widget(self._context))
             except Exception:
                 log.exception("Could not open tool %s", tool.id)
-                QMessageBox.critical(self, tool.name, "Araç açılırken bir hata oluştu. Ayrıntılar log dosyasında.")
+                QMessageBox.critical(
+                    self, tool.name, "Araç açılırken bir hata oluştu. Ayrıntılar log dosyasında."
+                )
                 return
         page = self._pages.get(key)
         if page is None:
@@ -173,8 +175,14 @@ class MainWindow(QMainWindow):
                     nav.setCurrentItem(item)
             nav.blockSignals(False)
 
+    def current_page_key(self) -> str | None:
+        current = self._stack.currentWidget()
+        return next((key for key, page in self._pages.items() if page is current), None)
+
     def page_keys(self) -> list[str]:
-        return list(self._pages)
+        """Keys of every page, including tool pages that have not been opened yet."""
+        tool_keys = [TOOL_PREFIX + tool_id for tool_id in self._tools]
+        return [HOME, *tool_keys, SETTINGS, ABOUT]
 
     # ------------------------------------------------------------- lifecycle
     def start_background_checks(self) -> None:
