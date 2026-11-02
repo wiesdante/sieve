@@ -25,6 +25,8 @@ def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print(__doc__, file=sys.stderr)
         return 2
+    # Release notes contain non-ASCII text (e.g. Turkish); never depend on the console code page.
+    sys.stdout.reconfigure(encoding="utf-8")
     try:
         print(extract(CHANGELOG.read_text(encoding="utf-8"), argv[1].lstrip("v")), end="")
     except LookupError as exc:

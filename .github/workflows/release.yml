@@ -48,6 +48,7 @@ jobs:
     timeout-minutes: 30
     env:
       VERSION: ${{ needs.plan.outputs.version }}
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v5
 
