@@ -41,3 +41,11 @@ jobs:
           name: ui-screenshots
           path: screenshots/*.png
           retention-days: 7
+
+      - name: Print screenshots to the log
+        shell: bash
+        run: |
+          for f in screenshots/*.png; do
+            name=$(basename "$f")
+            base64 -w 3000 "$f" | sed "s/^/SHOT ${name} /"
+          done
