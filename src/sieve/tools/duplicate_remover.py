@@ -126,7 +126,7 @@ class DuplicateRemoverPage(ToolPage):
         bar.setObjectName("Toolbar")
         row = QHBoxLayout(bar)
         row.setContentsMargins(14, 8, 14, 8)
-        row.setSpacing(18)
+        row.setSpacing(14)
         defaults = DedupeOptions()
 
         def checkbox(key: str, text: str, tooltip: str) -> QCheckBox:
@@ -134,32 +134,34 @@ class DuplicateRemoverPage(ToolPage):
             box.setToolTip(tooltip)
             box.setChecked(bool(self._prefs.get(key, getattr(defaults, key))))
             box.toggled.connect(self._save_options)
+            # Never squeeze a label; the toolbar is sized to fit the narrowest window.
+            box.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             row.addWidget(box)
             return box
 
         self._ignore_case = checkbox(
             "ignore_case",
-            "Case-insensitive",
+            "Ignore case",
             'Ignore letter case: "Apple" and "apple" count as the same line. '
             "Turkish İ/i are matched correctly.",
         )
         self._collapse_ws = checkbox(
             "collapse_whitespace",
-            "Ignore whitespace",
+            "Ignore spaces",
             "Runs of spaces and tabs inside a line compare as a single space.",
         )
         self._remove_empty = checkbox(
-            "remove_empty", "Remove empty lines", "Drops lines that are empty or contain only whitespace."
+            "remove_empty", "Skip empty lines", "Drops lines that are empty or contain only whitespace."
         )
         self._output_normalized = checkbox(
             "output_normalized",
-            "Normalized output",
+            "Normalize output",
             "Off: each line is written exactly as it first appeared.\n"
             "On: lines are written lowercased with single spaces.",
         )
         row.addStretch(1)
-        row.addWidget(muted_label("Sort", wrap=False))
         self._sort = QComboBox()
+        self._sort.setToolTip("Sort order of the result")
         for key, label in SORT_MODES.items():
             self._sort.addItem(label, key)
         index = self._sort.findData(self._prefs.get("sort", defaults.sort))
