@@ -208,6 +208,8 @@ class MainWindow(QMainWindow):
         nav = QListWidget()
         nav.setObjectName("NavList")
         nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        nav.setTextElideMode(Qt.TextElideMode.ElideRight)
         nav.setCursor(Qt.CursorShape.PointingHandCursor)
         nav.setIconSize(QSize(20, 20))
         nav.itemClicked.connect(lambda item: self.navigate(item.data(KEY_ROLE)))
