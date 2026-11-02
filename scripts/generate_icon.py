@@ -1,6 +1,9 @@
 """Regenerate ``assets/icon.png`` and ``assets/icon.ico``.
 
 Usage: python scripts/generate_icon.py   (requires Pillow)
+
+Design: a dark rounded tile with a violet sieve ring, a square mesh inside it
+and a diagonal handle.
 """
 
 from __future__ import annotations
@@ -8,68 +11,81 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 SIZE = 1024
-TOP = (124, 108, 242)
-BOTTOM = (64, 196, 214)
+TILE_TOP = (30, 32, 44)
+TILE_BOTTOM = (18, 19, 26)
+RING = (139, 124, 255, 255)
+MESH = (255, 255, 255, 230)
+ICO_SIZES = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48), (64, 64), (128, 128), (256, 256)]
 
 
 def _gradient(size: int) -> Image.Image:
-    image = Image.new("RGB", (size, size))
-    pixels = image.load()
-    for y in range(size):
-        for x in range(size):
-            t = (x + y) / (2 * (size - 1))
-            pixels[x, y] = tuple(round(a + (b - a) * t) for a, b in zip(TOP, BOTTOM, strict=True))
-    return image
+    column = Image.new("RGB", (1, 2 * size))
+    for y in range(2 * size):
+        t = y / (2 * size - 1)
+        column.putpixel((0, y), tuple(round(a + (b - a) * t) for a, b in zip(TILE_TOP, TILE_BOTTOM, strict=True)))
+    # A vertical ramp rotated 45 degrees gives a diagonal gradient.
+    ramp = column.resize((2 * size, 2 * size)).rotate(45, resample=Image.Resampling.BICUBIC)
+    offset = size // 2
+    return ramp.crop((offset, offset, offset + size, offset + size))
+
+
+def _tile() -> Image.Image:
+    canvas = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    mask = Image.new("L", (SIZE, SIZE), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, SIZE - 1, SIZE - 1), radius=int(SIZE * 0.225), fill=255)
+    canvas.paste(_gradient(SIZE), (0, 0), mask)
+    return canvas
+
+
+def _glyph() -> Image.Image:
+    layer = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    cx = cy = SIZE * 0.45
+    radius = SIZE * 0.27
+    draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), outline=RING, width=46)
+
+    inner = radius - 58
+    step = 62
+    for i in range(-6, 7):
+        for j in range(-6, 7):
+            x, y = cx + i * step, cy + j * step
+            if math.hypot(x - cx, y - cy) <= inner:
+                draw.rounded_rectangle((x - 17, y - 17, x + 17, y + 17), radius=6, fill=MESH)
+
+    angle = math.radians(45)
+    start = (cx + (radius + 10) * math.cos(angle), cy + (radius + 10) * math.sin(angle))
+    end = (cx + (radius + 210) * math.cos(angle), cy + (radius + 210) * math.sin(angle))
+    draw.line((start, end), fill=RING, width=58)
+    draw.ellipse((end[0] - 29, end[1] - 29, end[0] + 29, end[1] + 29), fill=RING)
+    return layer
+
+
+def _with_shadow(layer: Image.Image) -> Image.Image:
+    shadow = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    shadow.putalpha(layer.split()[3].point(lambda v: min(v, 120)))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(26))
+    out = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    out.alpha_composite(shadow, (0, 14))
+    out.alpha_composite(layer)
+    return out
 
 
 def build() -> Image.Image:
-    scale = 4  # draw large, downsample for smooth edges
-    big = SIZE * scale // 4
-    canvas = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-
-    mask = Image.new("L", (big, big), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, big - 1, big - 1), radius=big * 0.22, fill=255)
-    canvas.paste(_gradient(big), (0, 0), mask)
-
-    draw = ImageDraw.Draw(canvas)
-    cx = cy = big / 2
-    radius = big * 0.30
-    rim = big * 0.045
-    draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), outline="white", width=round(rim))
-
-    # Mesh of dots inside the rim.
-    inner = radius - rim * 2.2
-    step = big * 0.075
-    dot = big * 0.018
-    count = math.ceil(inner / step)
-    for i in range(-count, count + 1):
-        for j in range(-count, count + 1):
-            x, y = cx + i * step, cy + j * step
-            if math.hypot(x - cx, y - cy) <= inner:
-                draw.ellipse((x - dot, y - dot, x + dot, y + dot), fill=(255, 255, 255, 235))
-
-    # Handle.
-    angle = math.radians(45)
-    start = (cx + radius * math.cos(angle), cy + radius * math.sin(angle))
-    end = (cx + radius * 1.45 * math.cos(angle), cy + radius * 1.45 * math.sin(angle))
-    draw.line((start, end), fill="white", width=round(rim * 1.2))
-    draw.ellipse(
-        (end[0] - rim * 0.6, end[1] - rim * 0.6, end[0] + rim * 0.6, end[1] + rim * 0.6),
-        fill="white",
-    )
-    return canvas.resize((256, 256), Image.Resampling.LANCZOS)
+    icon = _tile()
+    icon.alpha_composite(_with_shadow(_glyph()))
+    return icon
 
 
 def main() -> None:
     icon = build()
     assets = ROOT / "assets"
     assets.mkdir(exist_ok=True)
-    icon.save(assets / "icon.png")
-    icon.save(assets / "icon.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    icon.resize((256, 256), Image.Resampling.LANCZOS).save(assets / "icon.png")
+    icon.resize((256, 256), Image.Resampling.LANCZOS).save(assets / "icon.ico", sizes=ICO_SIZES)
     print(f"Wrote icons to {assets}")
 
 
