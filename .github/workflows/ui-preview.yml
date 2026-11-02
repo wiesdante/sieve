@@ -9,6 +9,7 @@ on:
       - "src/sieve/ui/**"
       - "src/sieve/tools/**"
       - "src/sieve/app.py"
+      - ".github/workflows/ui-preview.yml"
   workflow_dispatch:
 
 jobs:
