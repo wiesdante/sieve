@@ -20,6 +20,12 @@ Sieve replaces a folder full of one-off console scripts with a single desktop
 application. Each workflow lives in the app as a **tool** with its own page,
 and every tool shares the same settings, proxy pool and logging.
 
+## Tools
+
+| Tool | What it does |
+| --- | --- |
+| **Duplicate Remover** | Removes repeated lines from pasted text while keeping the first occurrence and the original order. |
+
 ## Features
 
 - **One app, many tools** — every scraping workflow gets its own page in the sidebar.
