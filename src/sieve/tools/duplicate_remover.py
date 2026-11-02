@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -42,7 +41,16 @@ from sieve.core.dedupe import (
 from sieve.tools.base import Tool
 from sieve.ui import theme
 from sieve.ui.tasks import BackgroundTask, run_in_background
-from sieve.ui.widgets import ToolPage, flash_button, format_number, muted_label, primary_button
+from sieve.ui.widgets import (
+    ToolPage,
+    compact_button,
+    flash_button,
+    format_number,
+    muted_label,
+    primary_button,
+    stats_html,
+    titled_panel,
+)
 
 log = logging.getLogger(__name__)
 
@@ -62,32 +70,6 @@ class DuplicateRemoverTool(Tool):
 
 def run_job(text: str, options: DedupeOptions, progress=None, cancelled=None) -> DedupeResult:
     return remove_duplicates(text.splitlines(), options, progress=progress, cancelled=cancelled)
-
-
-def _compact_button(text: str, tooltip: str = "") -> QPushButton:
-    """Small secondary button for panel headers and footers."""
-    button = QPushButton(text)
-    button.setProperty("compact", True)
-    button.setCursor(Qt.CursorShape.PointingHandCursor)
-    if tooltip:
-        button.setToolTip(tooltip)
-    return button
-
-
-def _panel(title: str) -> tuple[QFrame, QVBoxLayout, QHBoxLayout]:
-    """A rounded panel with a header row; returns (panel, body layout, header layout)."""
-    panel = QFrame()
-    panel.setObjectName("Panel")
-    body = QVBoxLayout(panel)
-    body.setContentsMargins(14, 12, 14, 12)
-    body.setSpacing(8)
-    header = QHBoxLayout()
-    header.setSpacing(6)
-    label = QLabel(title)
-    label.setObjectName("PanelTitle")
-    header.addWidget(label)
-    body.addLayout(header)
-    return panel, body, header
 
 
 class DuplicateRemoverPage(ToolPage):
@@ -196,12 +178,12 @@ class DuplicateRemoverPage(ToolPage):
 
     # ----------------------------------------------------------------- input
     def _build_input_panel(self) -> QFrame:
-        panel, body, header = _panel("Input")
+        panel, body, header = titled_panel("Input")
         self._input_info = muted_label(wrap=False)
         header.addWidget(self._input_info)
         header.addStretch(1)
-        paste = _compact_button("Paste", "Replace the input with the clipboard contents.")
-        clear = _compact_button("Clear", "Clear the input.")
+        paste = compact_button("Paste", "Replace the input with the clipboard contents.")
+        clear = compact_button("Clear", "Clear the input.")
         paste.clicked.connect(self._paste_from_clipboard)
         clear.clicked.connect(self._clear_input)
         header.addWidget(paste)
@@ -263,7 +245,7 @@ class DuplicateRemoverPage(ToolPage):
 
     # ---------------------------------------------------------------- output
     def _build_output_panel(self) -> QFrame:
-        panel, body, header = _panel("Output")
+        panel, body, header = titled_panel("Output")
         self._stats = QLabel()
         self._stats.setObjectName("Stats")
         self._stats.setTextFormat(Qt.TextFormat.RichText)
@@ -295,10 +277,10 @@ class DuplicateRemoverPage(ToolPage):
 
         footer = QHBoxLayout()
         footer.setSpacing(6)
-        self._to_input_button = _compact_button(
+        self._to_input_button = compact_button(
             "Use as input", "Move the result to the input to run again with other options."
         )
-        self._copy_dups_button = _compact_button(
+        self._copy_dups_button = compact_button(
             "Copy duplicates", "Copy the repeated lines with their counts."
         )
         self._to_input_button.clicked.connect(self._use_as_input)
@@ -378,22 +360,12 @@ class DuplicateRemoverPage(ToolPage):
             self._dup_table.setRowCount(0)
             return
 
-        def stat(label: str, value: int, color: str | None = None) -> str:
-            number = format_number(value)
-            if color:
-                number = f'<span style="color:{color}; font-weight:600">{number}</span>'
-            else:
-                number = f'<span style="color:{theme.TEXT}; font-weight:600">{number}</span>'
-            return f"{label} {number}"
-
-        self._stats.setText(
-            "&nbsp;&nbsp;·&nbsp;&nbsp;".join([
-                stat("Total", result.total),
-                stat("Empty", result.empty),
-                stat("Removed", result.removed, theme.WARNING if result.removed else None),
-                stat("Unique", result.unique, theme.SUCCESS),
-            ])
-        )
+        self._stats.setText(stats_html([
+            ("Total", result.total, None),
+            ("Empty", result.empty, None),
+            ("Removed", result.removed, theme.WARNING if result.removed else None),
+            ("Unique", result.unique, theme.SUCCESS),
+        ]))
 
         self._output.setPlainText("\n".join(result.lines))
 

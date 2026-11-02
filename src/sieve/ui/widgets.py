@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QFrame,
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
@@ -36,6 +37,43 @@ def open_folder(path: Path) -> None:
 
 def open_url(url: str) -> None:
     QDesktopServices.openUrl(QUrl(url))
+
+
+def compact_button(text: str, tooltip: str = "") -> QPushButton:
+    """Small secondary button for panel headers and footers."""
+    button = QPushButton(text)
+    button.setProperty("compact", True)
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    if tooltip:
+        button.setToolTip(tooltip)
+    return button
+
+
+def titled_panel(title: str) -> tuple[QFrame, QVBoxLayout, QHBoxLayout]:
+    """A rounded panel with a header row; returns (panel, body layout, header layout)."""
+    panel = QFrame()
+    panel.setObjectName("Panel")
+    body = QVBoxLayout(panel)
+    body.setContentsMargins(14, 12, 14, 12)
+    body.setSpacing(8)
+    header = QHBoxLayout()
+    header.setSpacing(6)
+    label = QLabel(title)
+    label.setObjectName("PanelTitle")
+    header.addWidget(label)
+    body.addLayout(header)
+    return panel, body, header
+
+
+def stats_html(items: list[tuple[str, int, str | None]]) -> str:
+    """Inline statistics such as "Total 120 · Kept 80"; each item is (label, value, color)."""
+    from sieve.ui import theme
+
+    parts = []
+    for label, value, color in items:
+        style = f"color:{color or theme.TEXT}; font-weight:600"
+        parts.append(f'{label} <span style="{style}">{format_number(value)}</span>')
+    return "&nbsp;&nbsp;·&nbsp;&nbsp;".join(parts)
 
 
 def flash_button(button: QPushButton, text: str, duration_ms: int = 1500) -> None:
