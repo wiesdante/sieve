@@ -219,15 +219,24 @@ QPlainTextEdit#Editor {{
     font-family: "Cascadia Mono", "Consolas", monospace;
     font-size: 10pt;
 }}
-QPushButton[flat="true"] {{
-    background: transparent;
-    border: 1px solid transparent;
-    color: {TEXT_MUTED};
+QPushButton[compact="true"] {{
+    background: {SURFACE_ALT};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+    color: {TEXT};
     padding: 5px 10px;
 }}
-QPushButton[flat="true"]:hover {{
-    background: {SURFACE_ALT};
-    color: {TEXT};
+QPushButton[compact="true"]:hover {{
+    border-color: {ACCENT};
+    background: {BORDER};
+}}
+QPushButton[compact="true"]:pressed {{
+    background: {BACKGROUND};
+}}
+QPushButton[compact="true"]:disabled {{
+    background: transparent;
+    border-color: {SURFACE_ALT};
+    color: {TEXT_MUTED};
 }}
 
 QProgressBar {{

@@ -64,9 +64,10 @@ def run_job(text: str, options: DedupeOptions, progress=None, cancelled=None) ->
     return remove_duplicates(text.splitlines(), options, progress=progress, cancelled=cancelled)
 
 
-def _flat_button(text: str, tooltip: str = "") -> QPushButton:
+def _compact_button(text: str, tooltip: str = "") -> QPushButton:
+    """Small secondary button for panel headers and footers."""
     button = QPushButton(text)
-    button.setProperty("flat", True)
+    button.setProperty("compact", True)
     button.setCursor(Qt.CursorShape.PointingHandCursor)
     if tooltip:
         button.setToolTip(tooltip)
@@ -197,8 +198,8 @@ class DuplicateRemoverPage(ToolPage):
         self._input_info = muted_label(wrap=False)
         header.addWidget(self._input_info)
         header.addStretch(1)
-        paste = _flat_button("Yapıştır", "Panodaki metni girdiye yapıştırır.")
-        clear = _flat_button("Boşalt", "Girdiyi temizler.")
+        paste = _compact_button("Yapıştır", "Panodaki metni girdiye yapıştırır.")
+        clear = _compact_button("Boşalt", "Girdiyi temizler.")
         paste.clicked.connect(self._paste_from_clipboard)
         clear.clicked.connect(self._clear_input)
         header.addWidget(paste)
@@ -292,10 +293,10 @@ class DuplicateRemoverPage(ToolPage):
 
         footer = QHBoxLayout()
         footer.setSpacing(6)
-        self._to_input_button = _flat_button(
+        self._to_input_button = _compact_button(
             "Girdiye taşı", "Sonuç üzerinde farklı seçeneklerle tekrar çalışmak için."
         )
-        self._copy_dups_button = _flat_button(
+        self._copy_dups_button = _compact_button(
             "Duplicate'leri kopyala", "Tekrar eden satırları ve tekrar sayılarını kopyalar."
         )
         self._to_input_button.clicked.connect(self._use_as_input)
