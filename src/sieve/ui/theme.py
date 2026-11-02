@@ -244,6 +244,33 @@ QPushButton[compact="true"]:disabled {{
     color: {TEXT_MUTED};
 }}
 
+/* Segmented mode switch */
+QPushButton[segment] {{
+    background: {BACKGROUND};
+    border: 1px solid {BORDER};
+    color: {TEXT_MUTED};
+    padding: 6px 16px;
+    border-radius: 0;
+}}
+QPushButton[segment="blacklist"] {{
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
+}}
+QPushButton[segment="whitelist"] {{
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+    border-left: none;
+}}
+QPushButton[segment]:checked {{
+    background: {ACCENT};
+    border-color: {ACCENT};
+    color: white;
+    font-weight: 600;
+}}
+QPushButton[segment]:hover:!checked {{
+    color: {TEXT};
+}}
+
 QProgressBar {{
     background: {BACKGROUND};
     border: 1px solid {BORDER};

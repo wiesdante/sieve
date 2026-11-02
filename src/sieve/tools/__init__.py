@@ -12,8 +12,9 @@ from sieve.tools.base import Tool
 def all_tools() -> list[Tool]:
     """Every tool shown in the sidebar, in display order."""
     from sieve.tools.duplicate_remover import DuplicateRemoverTool
+    from sieve.tools.keyword_filter import KeywordFilterTool
 
-    return [DuplicateRemoverTool()]
+    return [DuplicateRemoverTool(), KeywordFilterTool()]
 
 
 __all__ = ["Tool", "all_tools"]

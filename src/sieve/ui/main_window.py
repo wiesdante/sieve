@@ -198,6 +198,13 @@ class MainWindow(QMainWindow):
             self.resize(1180, 760)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 (Qt override)
+        for page in self._pages.values():
+            save_state = getattr(page, "save_state", None)
+            if callable(save_state):
+                try:
+                    save_state()
+                except Exception:
+                    log.exception("Could not save page state")
         geometry = bytes(self.saveGeometry().toBase64()).decode("ascii")
         self._context.settings.window_geometry = geometry
         try:
