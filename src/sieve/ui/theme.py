@@ -155,6 +155,11 @@ QPushButton[primary="true"] {{
 QPushButton[primary="true"]:hover {{
     background: {ACCENT_HOVER};
 }}
+QPushButton[primary="true"]:disabled {{
+    background: {SURFACE_ALT};
+    border-color: {SURFACE_ALT};
+    color: {TEXT_MUTED};
+}}
 
 /* Tabs */
 QTabWidget::pane {{
