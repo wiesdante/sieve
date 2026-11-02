@@ -38,6 +38,32 @@ def open_url(url: str) -> None:
     QDesktopServices.openUrl(QUrl(url))
 
 
+class StatTile(QFrame):
+    """A small labelled number, e.g. "Unique  12.345"."""
+
+    def __init__(self, label: str) -> None:
+        super().__init__()
+        self.setObjectName("StatTile")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(2)
+        self._value = QLabel("—")
+        self._value.setObjectName("StatValue")
+        caption = QLabel(label)
+        caption.setObjectName("StatLabel")
+        layout.addWidget(self._value)
+        layout.addWidget(caption)
+
+    def set_value(self, value: int | None, color: str | None = None) -> None:
+        self._value.setText("—" if value is None else format_number(value))
+        self._value.setStyleSheet(f"color: {color};" if color else "")
+
+
+def format_number(value: int) -> str:
+    """12345 -> "12.345" (Turkish thousands separator)."""
+    return f"{value:,}".replace(",", ".")
+
+
 class Page(QScrollArea):
     """Scrollable page with a title, subtitle and a content layout."""
 

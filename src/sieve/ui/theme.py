@@ -147,6 +147,59 @@ QPushButton[primary="true"]:hover {{
     background: {ACCENT_HOVER};
 }}
 
+/* Tabs */
+QTabWidget::pane {{
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+    top: -1px;
+    background: {SURFACE};
+}}
+QTabBar::tab {{
+    background: transparent;
+    color: {TEXT_MUTED};
+    padding: 8px 16px;
+    border-bottom: 2px solid transparent;
+}}
+QTabBar::tab:selected {{
+    color: {TEXT};
+    border-bottom: 2px solid {ACCENT};
+}}
+QTabBar::tab:hover {{
+    color: {TEXT};
+}}
+
+/* Tables and lists */
+QTableWidget, QListWidget#FileList {{
+    background: {BACKGROUND};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+    gridline-color: {BORDER};
+    selection-background-color: {ACCENT};
+}}
+QHeaderView::section {{
+    background: {SURFACE_ALT};
+    color: {TEXT_MUTED};
+    border: none;
+    border-bottom: 1px solid {BORDER};
+    padding: 6px 8px;
+    font-weight: 600;
+}}
+
+/* Stat tiles */
+#StatTile {{
+    background: {BACKGROUND};
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+}}
+#StatValue {{
+    font-size: 16pt;
+    font-weight: 600;
+}}
+#StatLabel {{
+    color: {TEXT_MUTED};
+    font-size: 9pt;
+}}
+
 QProgressBar {{
     background: {BACKGROUND};
     border: 1px solid {BORDER};
