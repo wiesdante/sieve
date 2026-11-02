@@ -69,24 +69,24 @@ def _port(value: str, line: str) -> int:
     try:
         port = int(value)
     except ValueError:
-        raise ProxyParseError(f"Geçersiz port: {line}") from None
+        raise ProxyParseError(f"Invalid port: {line}") from None
     if not 0 < port < 65536:
-        raise ProxyParseError(f"Geçersiz port: {line}")
+        raise ProxyParseError(f"Invalid port: {line}")
     return port
 
 
 def parse_proxy(line: str, default_scheme: str = "http") -> Proxy:
     text = line.strip()
     if not text:
-        raise ProxyParseError("Boş satır")
+        raise ProxyParseError("Empty line")
 
     if "://" in text:
         parts = urlsplit(text)
         scheme = parts.scheme.lower()
         if scheme not in SUPPORTED_SCHEMES:
-            raise ProxyParseError(f"Desteklenmeyen protokol: {line}")
+            raise ProxyParseError(f"Unsupported protocol: {line}")
         if not parts.hostname or parts.port is None:
-            raise ProxyParseError(f"Host veya port eksik: {line}")
+            raise ProxyParseError(f"Missing host or port: {line}")
         return Proxy(
             scheme, parts.hostname, parts.port,
             unquote(parts.username or ""), unquote(parts.password or ""),
@@ -97,7 +97,7 @@ def parse_proxy(line: str, default_scheme: str = "http") -> Proxy:
         username, _, password = credentials.partition(":")
         host, sep, port = address.rpartition(":")
         if not sep or not host:
-            raise ProxyParseError(f"Host veya port eksik: {line}")
+            raise ProxyParseError(f"Missing host or port: {line}")
         return Proxy(default_scheme, host, _port(port, line), username, password)
 
     pieces = text.split(":")
@@ -106,7 +106,7 @@ def parse_proxy(line: str, default_scheme: str = "http") -> Proxy:
     if len(pieces) >= 4:
         password = ":".join(pieces[3:])
         return Proxy(default_scheme, pieces[0], _port(pieces[1], line), pieces[2], password)
-    raise ProxyParseError(f"Tanınmayan format: {line}")
+    raise ProxyParseError(f"Unrecognized format: {line}")
 
 
 def parse_proxy_list(lines: list[str]) -> tuple[list[Proxy], list[str]]:
@@ -170,10 +170,10 @@ def check_proxy(proxy: Proxy, timeout: float = 10.0) -> ProxyCheckResult:
 
 def _short_error(exc: Exception) -> str:
     if isinstance(exc, requests.exceptions.ProxyError):
-        return "Proxy bağlantısı reddedildi"
+        return "Proxy refused the connection"
     if isinstance(exc, requests.exceptions.ConnectTimeout | requests.exceptions.ReadTimeout):
-        return "Zaman aşımı"
+        return "Timed out"
     if isinstance(exc, requests.exceptions.InvalidSchema):
-        return "SOCKS desteği eksik"
+        return "SOCKS support is missing"
     text = str(exc) or exc.__class__.__name__
     return text if len(text) <= 120 else text[:117] + "..."

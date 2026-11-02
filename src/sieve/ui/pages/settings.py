@@ -29,22 +29,22 @@ from sieve.ui.tasks import run_in_background
 from sieve.ui.widgets import Page, muted_label, open_folder, primary_button
 
 TOKEN_HELP = f"""
-### GitHub token nasıl oluşturulur?
+### How to create a GitHub token
 
-Sieve, güncellemeleri private `{GITHUB_REPO}` reposundan indirir. Bunun için
-**sadece okuma yetkisi olan** bir token yeterlidir.
+Sieve downloads updates from the private `{GITHUB_REPO}` repository. A token with
+**read-only** access is all it needs.
 
-1. GitHub'da **Settings → Developer settings → Personal access tokens →
-   Fine-grained tokens** sayfasına git ve **Generate new token**'a tıkla.
-2. **Token name**: örneğin `Sieve updates`.
-3. **Expiration**: istediğin bir süre seç. Süresi dolunca yenisini buraya eklemen yeterli.
+1. On GitHub, open **Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens** and click **Generate new token**.
+2. **Token name**: for example `Sieve updates`.
+3. **Expiration**: any duration you like. When it expires, just paste a new one here.
 4. **Repository access**: **Only select repositories** → `{GITHUB_REPO.split('/')[1]}`.
 5. **Permissions → Repository permissions → Contents**: **Read-only**.
-   (Metadata otomatik olarak Read-only eklenir.)
-6. **Generate token**'a tıkla, çıkan değeri kopyalayıp buraya yapıştır.
+   (Metadata is added as read-only automatically.)
+6. Click **Generate token**, copy the value and paste it here.
 
-Token bu bilgisayarda Windows'un kendi şifrelemesiyle (DPAPI) saklanır ve
-yalnızca senin Windows kullanıcın tarafından çözülebilir.
+The token is stored on this computer encrypted with Windows DPAPI and can only be
+decrypted by your Windows user.
 """
 
 
@@ -52,7 +52,7 @@ class SettingsPage(Page):
     token_changed = Signal()
 
     def __init__(self, context: AppContext) -> None:
-        super().__init__("Ayarlar")
+        super().__init__("Settings")
         self._context = context
         self.content.addWidget(self._build_updates_group())
         self.content.addWidget(self._build_proxy_group())
@@ -68,14 +68,14 @@ class SettingsPage(Page):
         self._token_input = QLineEdit()
         self._token_input.setEchoMode(QLineEdit.EchoMode.Password)
         self._token_input.setPlaceholderText("github_pat_...")
-        show = QPushButton("Göster")
+        show = QPushButton("Show")
         show.setCheckable(True)
         show.toggled.connect(
             lambda on: (
                 self._token_input.setEchoMode(
                     QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password
                 ),
-                show.setText("Gizle" if on else "Göster"),
+                show.setText("Hide" if on else "Show"),
             )
         )
         token_row = QHBoxLayout()
@@ -90,9 +90,9 @@ class SettingsPage(Page):
         layout.addWidget(self._token_status)
 
         buttons = QHBoxLayout()
-        save = primary_button("Kaydet ve test et")
-        remove = QPushButton("Token'ı sil")
-        help_button = QPushButton("Token nasıl oluşturulur?")
+        save = primary_button("Save && test")
+        remove = QPushButton("Remove token")
+        help_button = QPushButton("How to create a token")
         save.clicked.connect(self._save_token)
         remove.clicked.connect(self._remove_token)
         help_button.clicked.connect(self._show_token_help)
@@ -102,7 +102,7 @@ class SettingsPage(Page):
         buttons.addWidget(help_button)
         layout.addLayout(buttons)
 
-        self._auto_check = QCheckBox("Açılışta güncellemeleri otomatik kontrol et")
+        self._auto_check = QCheckBox("Check for updates on startup")
         self._auto_check.toggled.connect(self._save_update_prefs)
         layout.addWidget(self._auto_check)
         return group
@@ -114,19 +114,19 @@ class SettingsPage(Page):
     def _save_token(self) -> None:
         token = self._token_input.text().strip()
         if not token:
-            QMessageBox.information(self, "Token", "Önce token'ı yapıştırmalısın.")
+            QMessageBox.information(self, "Token", "Paste a token first.")
             return
-        self._set_token_status("Token test ediliyor...")
+        self._set_token_status("Testing token...")
 
         def on_success(repo: str) -> None:
             self._context.credentials.set(GITHUB_TOKEN, token)
             self._token_input.clear()
-            self._set_token_status(f"Token kaydedildi. {repo} reposuna erişim var.", theme.SUCCESS)
+            self._set_token_status(f"Token saved. It has access to {repo}.", theme.SUCCESS)
             self.token_changed.emit()
 
         def on_error(exc: Exception) -> None:
-            message = str(exc) if isinstance(exc, updater.UpdateError) else "Beklenmeyen hata."
-            self._set_token_status(f"Token kaydedilmedi: {message}", theme.DANGER)
+            message = str(exc) if isinstance(exc, updater.UpdateError) else "Unexpected error."
+            self._set_token_status(f"Token not saved: {message}", theme.DANGER)
 
         run_in_background(updater.verify_token, token, on_success=on_success, on_error=on_error)
 
@@ -134,11 +134,11 @@ class SettingsPage(Page):
         if not self._context.credentials.get(GITHUB_TOKEN):
             return
         answer = QMessageBox.question(
-            self, "Token'ı sil", "Kayıtlı GitHub token'ı silinsin mi?"
+            self, "Remove token", "Remove the saved GitHub token?"
         )
         if answer == QMessageBox.StandardButton.Yes:
             self._context.credentials.delete(GITHUB_TOKEN)
-            self._set_token_status("Kayıtlı token yok.")
+            self._set_token_status("No token saved.")
             self.token_changed.emit()
 
     def _show_token_help(self) -> None:
@@ -149,7 +149,7 @@ class SettingsPage(Page):
         browser = QTextBrowser()
         browser.setMarkdown(TOKEN_HELP)
         layout.addWidget(browser)
-        close = QPushButton("Kapat")
+        close = QPushButton("Close")
         close.clicked.connect(dialog.accept)
         layout.addWidget(close)
         dialog.exec()
@@ -163,12 +163,12 @@ class SettingsPage(Page):
         group = QGroupBox("Proxy")
         layout = QVBoxLayout(group)
         layout.addWidget(muted_label(
-            "Buradaki proxy listesi proxy destekleyen tüm araçlar tarafından kullanılır. "
-            "Her satıra bir proxy: host:port, host:port:user:pass, user:pass@host:port "
-            "veya http:// / socks5:// ile başlayan tam adres."
+            "This proxy list is shared by every tool that supports proxies. "
+            "One proxy per line: host:port, host:port:user:pass, user:pass@host:port "
+            "or a full address starting with http:// or socks5://."
         ))
 
-        self._proxy_enabled = QCheckBox("Proxy kullan")
+        self._proxy_enabled = QCheckBox("Use proxies")
         self._rotation = QComboBox()
         for key, label in ROTATION_MODES.items():
             self._rotation.addItem(label, key)
@@ -188,8 +188,8 @@ class SettingsPage(Page):
         layout.addWidget(self._proxy_summary)
 
         buttons = QHBoxLayout()
-        save = primary_button("Kaydet")
-        self._test_button = QPushButton("Proxy'leri test et")
+        save = primary_button("Save")
+        self._test_button = QPushButton("Test proxies")
         save.clicked.connect(self._save_proxies)
         self._test_button.clicked.connect(self._test_proxies)
         buttons.addWidget(save)
@@ -213,9 +213,9 @@ class SettingsPage(Page):
         settings.proxies = [line.strip() for line in lines if line.strip()]
         self._context.save_settings()
 
-        summary = f"{len(proxies)} proxy kaydedildi."
+        summary = f"{len(proxies)} proxies saved."
         if errors:
-            summary += f" {len(errors)} satır okunamadı: " + "; ".join(errors[:3])
+            summary += f" {len(errors)} lines could not be read: " + "; ".join(errors[:3])
             self._proxy_summary.setStyleSheet(f"color: {theme.WARNING};")
         else:
             self._proxy_summary.setStyleSheet(f"color: {theme.SUCCESS};")
@@ -224,7 +224,7 @@ class SettingsPage(Page):
     def _test_proxies(self) -> None:
         proxies, errors = parse_proxy_list(self._proxy_list.toPlainText().splitlines())
         if not proxies:
-            QMessageBox.information(self, "Proxy", "Test edilecek geçerli proxy yok.")
+            QMessageBox.information(self, "Proxy", "There are no valid proxies to test.")
             return
 
         self._proxy_results.clear()
@@ -232,7 +232,7 @@ class SettingsPage(Page):
         for error in errors:
             self._proxy_results.appendPlainText(f"✗ {error}")
         self._test_button.setEnabled(False)
-        self._test_button.setText(f"Test ediliyor (0/{len(proxies)})")
+        self._test_button.setText(f"Testing (0/{len(proxies)})")
         counts = {"done": 0, "ok": 0}
 
         def run_checks(progress, cancelled) -> None:
@@ -251,13 +251,13 @@ class SettingsPage(Page):
             else:
                 line = f"✗ {result.proxy}  →  {result.error}"
             self._proxy_results.appendPlainText(line)
-            self._test_button.setText(f"Test ediliyor ({counts['done']}/{total})")
+            self._test_button.setText(f"Testing ({counts['done']}/{total})")
 
         def on_done(*_) -> None:
             self._test_button.setEnabled(True)
-            self._test_button.setText("Proxy'leri test et")
+            self._test_button.setText("Test proxies")
             self._proxy_results.appendPlainText(
-                f"\n{counts['ok']}/{len(proxies)} proxy çalışıyor."
+                f"\n{counts['ok']}/{len(proxies)} proxies are working."
             )
 
         task = run_in_background(run_checks, on_progress=on_progress, on_error=on_done)
@@ -265,10 +265,10 @@ class SettingsPage(Page):
 
     # ---------------------------------------------------------------- folders
     def _build_folders_group(self) -> QGroupBox:
-        group = QGroupBox("Klasörler")
+        group = QGroupBox("Folders")
         layout = QHBoxLayout(group)
-        logs = QPushButton("Log klasörünü aç")
-        config = QPushButton("Ayar klasörünü aç")
+        logs = QPushButton("Open logs folder")
+        config = QPushButton("Open settings folder")
         logs.clicked.connect(lambda: open_folder(paths.logs_dir()))
         config.clicked.connect(lambda: open_folder(paths.config_dir()))
         layout.addWidget(logs)
@@ -287,6 +287,6 @@ class SettingsPage(Page):
         self._rotation.setCurrentIndex(max(index, 0))
         self._proxy_list.setPlainText("\n".join(settings.proxies))
         if self._context.credentials.get(GITHUB_TOKEN):
-            self._set_token_status("Kayıtlı bir token var. Değiştirmek için yenisini yapıştır.")
+            self._set_token_status("A token is saved. Paste a new one to replace it.")
         else:
-            self._set_token_status("Kayıtlı token yok.")
+            self._set_token_status("No token saved.")

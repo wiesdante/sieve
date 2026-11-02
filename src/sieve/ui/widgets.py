@@ -65,8 +65,8 @@ class ToolPage(QWidget):
 
 
 def format_number(value: int) -> str:
-    """12345 -> "12.345" (Turkish thousands separator)."""
-    return f"{value:,}".replace(",", ".")
+    """12345 -> "12,345"."""
+    return f"{value:,}"
 
 
 class Page(QScrollArea):

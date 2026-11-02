@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 _WHITESPACE = re.compile(r"\s+")
 _PROGRESS_EVERY = 50_000
 
-SORT_MODES = {"none": "Orijinal sıra", "asc": "A → Z", "desc": "Z → A"}
+SORT_MODES = {"none": "Original order", "asc": "A → Z", "desc": "Z → A"}
 
 
 class DedupeCancelledError(Exception):

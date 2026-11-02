@@ -53,8 +53,8 @@ DUPLICATE_TABLE_LIMIT = 1_000
 class DuplicateRemoverTool(Tool):
     id = TOOL_ID
     name = "Duplicate Remover"
-    description = "Tekrar eden satırları temizler; her satırın ilk geçtiği hali ve sırayı korur."
-    category = "Metin İşlemleri"
+    description = "Removes repeated lines, keeping each line's first occurrence and the original order."
+    category = "Text"
 
     def create_widget(self, context: AppContext) -> QWidget:
         return DuplicateRemoverPage(context)
@@ -140,25 +140,25 @@ class DuplicateRemoverPage(ToolPage):
         self._ignore_case = checkbox(
             "ignore_case",
             "Case-insensitive",
-            'Büyük/küçük harf farkı yok sayılır: "Apple" ve "apple" aynı satırdır. '
-            "Türkçe İ/i doğru eşleşir.",
+            'Ignore letter case: "Apple" and "apple" count as the same line. '
+            "Turkish İ/i are matched correctly.",
         )
         self._collapse_ws = checkbox(
             "collapse_whitespace",
-            "Whitespace'i yok say",
-            "Satır içindeki birden fazla boşluk ve tab, tek boşluk gibi karşılaştırılır.",
+            "Ignore whitespace",
+            "Runs of spaces and tabs inside a line compare as a single space.",
         )
         self._remove_empty = checkbox(
-            "remove_empty", "Boş satırları sil", "Boş veya sadece boşluktan oluşan satırlar çıkarılır."
+            "remove_empty", "Remove empty lines", "Drops lines that are empty or contain only whitespace."
         )
         self._output_normalized = checkbox(
             "output_normalized",
-            "Normalize çıktı",
-            "Kapalıyken her satırın ilk geçtiği orijinal hali yazılır.\n"
-            "Açıkken eski script gibi küçük harfe çevrilmiş, tek boşluklu hali yazılır.",
+            "Normalized output",
+            "Off: each line is written exactly as it first appeared.\n"
+            "On: lines are written lowercased with single spaces.",
         )
         row.addStretch(1)
-        row.addWidget(muted_label("Sıralama", wrap=False))
+        row.addWidget(muted_label("Sort", wrap=False))
         self._sort = QComboBox()
         for key, label in SORT_MODES.items():
             self._sort.addItem(label, key)
@@ -194,12 +194,12 @@ class DuplicateRemoverPage(ToolPage):
 
     # ----------------------------------------------------------------- input
     def _build_input_panel(self) -> QFrame:
-        panel, body, header = _panel("Girdi")
+        panel, body, header = _panel("Input")
         self._input_info = muted_label(wrap=False)
         header.addWidget(self._input_info)
         header.addStretch(1)
-        paste = _compact_button("Yapıştır", "Panodaki metni girdiye yapıştırır.")
-        clear = _compact_button("Boşalt", "Girdiyi temizler.")
+        paste = _compact_button("Paste", "Replace the input with the clipboard contents.")
+        clear = _compact_button("Clear", "Clear the input.")
         paste.clicked.connect(self._paste_from_clipboard)
         clear.clicked.connect(self._clear_input)
         header.addWidget(paste)
@@ -207,26 +207,26 @@ class DuplicateRemoverPage(ToolPage):
 
         self._input = QPlainTextEdit()
         self._input.setObjectName("Editor")
-        self._input.setPlaceholderText("Satırları buraya yapıştır...")
+        self._input.setPlaceholderText("Paste lines here...")
         self._input.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self._input.textChanged.connect(self._update_input_info)
         body.addWidget(self._input, 1)
 
         footer = QHBoxLayout()
         footer.setSpacing(8)
-        self._run_button = primary_button("Duplicate'leri temizle")
+        self._run_button = primary_button("Remove duplicates")
         self._run_button.setToolTip("Ctrl+Enter")
         self._run_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._run_button.clicked.connect(self._run)
-        self._paste_run_button = QPushButton("Yapıştır ve temizle")
+        self._paste_run_button = QPushButton("Paste && run")
         self._paste_run_button.setToolTip(
-            "Panodaki metni yapıştırır ve hemen temizler. Tek tıkla sonuç."
+            "Paste from the clipboard and remove duplicates in one click."
         )
         self._paste_run_button.clicked.connect(self._paste_and_run)
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
         self._progress.hide()
-        self._cancel_button = QPushButton("İptal")
+        self._cancel_button = QPushButton("Cancel")
         self._cancel_button.hide()
         self._cancel_button.clicked.connect(self._cancel)
         footer.addWidget(self._run_button, 1)
@@ -240,7 +240,7 @@ class DuplicateRemoverPage(ToolPage):
 
     def _update_input_info(self) -> None:
         lines = self._input.blockCount() if self._input.toPlainText() else 0
-        self._input_info.setText(f"· {format_number(lines)} satır")
+        self._input_info.setText(f"· {format_number(lines)} lines")
 
     def _paste_from_clipboard(self) -> bool:
         text = QGuiApplication.clipboard().text()
@@ -257,18 +257,18 @@ class DuplicateRemoverPage(ToolPage):
         if self._paste_from_clipboard():
             self._run()
         else:
-            flash_button(self._paste_run_button, "Pano boş")
+            flash_button(self._paste_run_button, "Clipboard is empty")
 
     # ---------------------------------------------------------------- output
     def _build_output_panel(self) -> QFrame:
-        panel, body, header = _panel("Çıktı")
+        panel, body, header = _panel("Output")
         self._stats = QLabel()
         self._stats.setObjectName("Stats")
         self._stats.setTextFormat(Qt.TextFormat.RichText)
         header.addWidget(self._stats)
         header.addStretch(1)
-        self._copy_button = primary_button("Kopyala")
-        self._copy_button.setToolTip("Sonucun tamamını panoya kopyalar (Ctrl+Shift+C).")
+        self._copy_button = primary_button("Copy")
+        self._copy_button.setToolTip("Copy the whole result to the clipboard (Ctrl+Shift+C).")
         self._copy_button.clicked.connect(self._copy_output)
         header.addWidget(self._copy_button)
 
@@ -276,12 +276,12 @@ class DuplicateRemoverPage(ToolPage):
         self._output = QPlainTextEdit()
         self._output.setObjectName("Editor")
         self._output.setReadOnly(True)
-        self._output.setPlaceholderText("Sonuç burada görünecek.")
+        self._output.setPlaceholderText("The result will appear here.")
         self._output.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self._result_tabs.addTab(self._output, "Sonuç")
+        self._result_tabs.addTab(self._output, "Result")
 
         self._dup_table = QTableWidget(0, 2)
-        self._dup_table.setHorizontalHeaderLabels(["Satır", "Tekrar"])
+        self._dup_table.setHorizontalHeaderLabels(["Line", "Count"])
         self._dup_table.verticalHeader().hide()
         self._dup_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._dup_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -294,18 +294,18 @@ class DuplicateRemoverPage(ToolPage):
         footer = QHBoxLayout()
         footer.setSpacing(6)
         self._to_input_button = _compact_button(
-            "Girdiye taşı", "Sonuç üzerinde farklı seçeneklerle tekrar çalışmak için."
+            "Use as input", "Move the result to the input to run again with other options."
         )
         self._copy_dups_button = _compact_button(
-            "Duplicate'leri kopyala", "Tekrar eden satırları ve tekrar sayılarını kopyalar."
+            "Copy duplicates", "Copy the repeated lines with their counts."
         )
         self._to_input_button.clicked.connect(self._use_as_input)
         self._copy_dups_button.clicked.connect(self._copy_duplicates)
         footer.addWidget(self._to_input_button)
         footer.addWidget(self._copy_dups_button)
         footer.addStretch(1)
-        self._auto_copy = QCheckBox("Oto. kopyala")
-        self._auto_copy.setToolTip("Temizleme bitince sonuç kendiliğinden panoya kopyalanır.")
+        self._auto_copy = QCheckBox("Auto-copy")
+        self._auto_copy.setToolTip("Copy the result to the clipboard as soon as it is ready.")
         self._auto_copy.setChecked(bool(self._prefs.get("auto_copy", False)))
         self._auto_copy.toggled.connect(self._save_auto_copy)
         footer.addWidget(self._auto_copy)
@@ -323,7 +323,7 @@ class DuplicateRemoverPage(ToolPage):
         text = self._input.toPlainText()
         if not text.strip():
             self._input.setFocus()
-            flash_button(self._run_button, "Önce metin yapıştır")
+            flash_button(self._run_button, "Paste some text first")
             return
         self._set_running(True)
         self._task = run_in_background(
@@ -356,7 +356,7 @@ class DuplicateRemoverPage(ToolPage):
         if isinstance(exc, DedupeCancelledError):
             return
         log.error("Duplicate removal failed", exc_info=exc)
-        QMessageBox.critical(self, "Duplicate Remover", f"Beklenmeyen bir hata oluştu:\n{exc}")
+        QMessageBox.critical(self, "Duplicate Remover", f"An unexpected error occurred:\n{exc}")
 
     def _on_done(self, result: DedupeResult) -> None:
         self._task = None
@@ -386,9 +386,9 @@ class DuplicateRemoverPage(ToolPage):
 
         self._stats.setText(
             "&nbsp;&nbsp;·&nbsp;&nbsp;".join([
-                stat("Toplam", result.total),
-                stat("Boş", result.empty),
-                stat("Silinen", result.removed, theme.WARNING if result.removed else None),
+                stat("Total", result.total),
+                stat("Empty", result.empty),
+                stat("Removed", result.removed, theme.WARNING if result.removed else None),
                 stat("Unique", result.unique, theme.SUCCESS),
             ])
         )
@@ -409,23 +409,23 @@ class DuplicateRemoverPage(ToolPage):
         if not self._result:
             return
         QGuiApplication.clipboard().setText("\n".join(self._result.lines))
-        flash_button(self._copy_button, "Kopyalandı ✓")
+        flash_button(self._copy_button, "Copied ✓")
 
     def _copy_duplicates(self) -> None:
         if not self._result:
             return
         if not self._result.duplicates:
-            flash_button(self._copy_dups_button, "Tekrar eden satır yok")
+            flash_button(self._copy_dups_button, "No duplicates")
             return
         lines = [f"{line}\t{count}" for line, count in self._result.duplicates]
         QGuiApplication.clipboard().setText("\n".join(lines))
-        flash_button(self._copy_dups_button, "Kopyalandı ✓")
+        flash_button(self._copy_dups_button, "Copied ✓")
 
     def load_demo(self) -> None:
         """Fill the page with sample data (used for CI screenshots)."""
         sample = "\n".join(
             ["https://example.com/a", "https://example.com/A ", "https://example.com/b", "",
-             "Ürün listesi", "ürün   listesi", "İstanbul", "istanbul", "https://example.com/c"] * 3
+             "Product list", "product   list", "İstanbul", "istanbul", "https://example.com/c"] * 3
         )
         self._input.setPlainText(sample)
         self._on_done(run_job(sample, self._options()))

@@ -40,7 +40,7 @@ class HomePage(Page):
     open_settings = Signal()
 
     def __init__(self, context: AppContext, tools: list[Tool]) -> None:
-        super().__init__("Hoş geldin", "Veri kazıma iş akışların için tek bir yer.")
+        super().__init__("Welcome", "One place for all your data scraping workflows.")
         self._context = context
 
         self._banner = QFrame()
@@ -48,10 +48,10 @@ class HomePage(Page):
         banner_layout = QHBoxLayout(self._banner)
         banner_layout.setContentsMargins(14, 10, 14, 10)
         banner_text = QLabel(
-            "Otomatik güncellemeler için bir GitHub token'ı eklemen gerekiyor."
+            "Add a GitHub token to enable automatic updates."
         )
         banner_text.setWordWrap(True)
-        banner_button = primary_button("Ayarlara git")
+        banner_button = primary_button("Open Settings")
         banner_button.clicked.connect(self.open_settings)
         banner_layout.addWidget(banner_text, 1)
         banner_layout.addWidget(banner_button)
@@ -59,7 +59,7 @@ class HomePage(Page):
 
         if not tools:
             empty = QLabel(
-                "Henüz eklenmiş bir araç yok.\nYeni araçlar eklendikçe burada ve sol menüde görünecek."
+                "No tools yet.\nNew tools will appear here and in the sidebar."
             )
             empty.setObjectName("EmptyState")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)

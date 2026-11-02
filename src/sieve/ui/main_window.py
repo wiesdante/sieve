@@ -102,9 +102,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(brand)
 
         self._main_nav = self._nav_list()
-        self._add_nav_item(self._main_nav, "Ana Sayfa", HOME)
+        self._add_nav_item(self._main_nav, "Home", HOME)
         if self._tools:
-            header = QListWidgetItem("ARAÇLAR")
+            header = QListWidgetItem("TOOLS")
             header.setFlags(Qt.ItemFlag.NoItemFlags)
             header.setData(KEY_ROLE, None)
             self._main_nav.addItem(header)
@@ -113,8 +113,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._main_nav, 1)
 
         self._bottom_nav = self._nav_list()
-        self._add_nav_item(self._bottom_nav, "Ayarlar", SETTINGS)
-        self._add_nav_item(self._bottom_nav, "Hakkında", ABOUT)
+        self._add_nav_item(self._bottom_nav, "Settings", SETTINGS)
+        self._add_nav_item(self._bottom_nav, "About", ABOUT)
         self._bottom_nav.setFixedHeight(self._bottom_nav.sizeHintForRow(0) * 2 + 12)
         layout.addWidget(self._bottom_nav)
 
@@ -156,7 +156,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 log.exception("Could not open tool %s", tool.id)
                 QMessageBox.critical(
-                    self, tool.name, "Araç açılırken bir hata oluştu. Ayrıntılar log dosyasında."
+                    self, tool.name, "The tool could not be opened. See the log file for details."
                 )
                 return
         page = self._pages.get(key)

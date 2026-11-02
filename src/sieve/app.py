@@ -31,9 +31,9 @@ def _install_exception_hook() -> None:
         log.critical("Unhandled exception", exc_info=(exc_type, exc, tb))
         if QApplication.instance() is not None:
             details = "".join(traceback.format_exception(exc_type, exc, tb))
-            box = QMessageBox(QMessageBox.Icon.Critical, APP_NAME, "Beklenmeyen bir hata oluştu.")
+            box = QMessageBox(QMessageBox.Icon.Critical, APP_NAME, "An unexpected error occurred.")
             box.setInformativeText(
-                f"Ayrıntılar log dosyasına yazıldı:\n{paths.logs_dir() / 'sieve.log'}"
+                f"Details were written to the log file:\n{paths.logs_dir() / 'sieve.log'}"
             )
             box.setDetailedText(details)
             box.exec()

@@ -66,7 +66,7 @@ def parse_version(text: str) -> Version:
     try:
         return Version(text.strip().lstrip("vV"))
     except InvalidVersion as exc:
-        raise UpdateError(f"Geçersiz sürüm numarası: {text}") from exc
+        raise UpdateError(f"Invalid version number: {text}") from exc
 
 
 def is_newer(candidate: str, current: str = __version__) -> bool:
@@ -86,18 +86,18 @@ def _session(token: str) -> requests.Session:
 
 def _raise_for_status(response: requests.Response) -> None:
     if response.status_code == 401:
-        raise AuthError("GitHub token geçersiz veya süresi dolmuş.")
+        raise AuthError("The GitHub token is invalid or has expired.")
     if response.status_code == 403:
-        raise AuthError("GitHub isteği reddetti. Token izinlerini kontrol et.")
+        raise AuthError("GitHub refused the request. Check the token's permissions.")
     if response.status_code >= 400:
-        raise UpdateError(f"GitHub beklenmeyen bir yanıt döndü (HTTP {response.status_code}).")
+        raise UpdateError(f"GitHub returned an unexpected response (HTTP {response.status_code}).")
 
 
 def _request(session: requests.Session, url: str, **kwargs) -> requests.Response:
     try:
         return session.get(url, timeout=TIMEOUT, **kwargs)
     except requests.RequestException as exc:
-        raise UpdateError("GitHub'a bağlanılamadı. İnternet bağlantını kontrol et.") from exc
+        raise UpdateError("Could not reach GitHub. Check your internet connection.") from exc
 
 
 def verify_token(token: str, repo: str = GITHUB_REPO) -> str:
@@ -105,7 +105,7 @@ def verify_token(token: str, repo: str = GITHUB_REPO) -> str:
     with _session(token) as session:
         response = _request(session, f"{API_ROOT}/repos/{repo}")
     if response.status_code == 404:
-        raise AuthError("Token'ın bu repoya erişimi yok.")
+        raise AuthError("The token has no access to this repository.")
     _raise_for_status(response)
     return response.json().get("full_name", repo)
 
@@ -128,7 +128,7 @@ def release_from_json(data: dict) -> ReleaseInfo:
                 asset_size=int(asset.get("size") or 0),
                 sha256=sha256,
             )
-    raise UpdateError(f"{tag} sürümünde kurulum dosyası bulunamadı.")
+    raise UpdateError(f"Release {tag} has no installer attached.")
 
 
 def fetch_latest_release(token: str, repo: str = GITHUB_REPO) -> ReleaseInfo | None:
@@ -170,7 +170,7 @@ def download_installer(
                     if cancelled and cancelled():
                         handle.close()
                         partial.unlink(missing_ok=True)
-                        raise UpdateCancelledError("İndirme iptal edildi.")
+                        raise UpdateCancelledError("Download cancelled.")
                     handle.write(chunk)
                     digest.update(chunk)
                     received += len(chunk)
@@ -179,10 +179,10 @@ def download_installer(
 
     if release.asset_size and received != release.asset_size:
         partial.unlink(missing_ok=True)
-        raise UpdateError("İndirilen dosya eksik. Lütfen tekrar dene.")
+        raise UpdateError("The download is incomplete. Please try again.")
     if release.sha256 and digest.hexdigest() != release.sha256:
         partial.unlink(missing_ok=True)
-        raise UpdateError("İndirilen dosya doğrulanamadı (SHA-256 uyuşmuyor).")
+        raise UpdateError("The download could not be verified (SHA-256 mismatch).")
 
     partial.replace(target)
     log.info("Downloaded %s (%d bytes)", target.name, received)
@@ -192,7 +192,7 @@ def download_installer(
 def launch_installer(installer: Path) -> None:
     """Run the installer silently; the caller must quit the app right after."""
     if sys.platform != "win32":
-        raise UpdateError("Otomatik kurulum yalnızca Windows'ta desteklenir.")
+        raise UpdateError("Automatic installation is only supported on Windows.")
     flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     subprocess.Popen(
         [str(installer), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"],

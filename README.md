@@ -52,7 +52,7 @@ The repository is private, so Sieve needs a read-only GitHub token to see new re
 1. GitHub → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
 2. **Repository access:** *Only select repositories* → `wiesdante/sieve`.
 3. **Permissions → Repository permissions → Contents:** *Read-only*.
-4. Paste the token into **Ayarlar → GitHub & Updates** in Sieve and click **Kaydet ve test et**.
+4. Paste the token into **Settings → GitHub & Updates** in Sieve and click **Save & test**.
 
 The token is encrypted with Windows DPAPI and can only be read by your Windows
 user on that machine.

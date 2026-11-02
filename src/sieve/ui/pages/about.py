@@ -13,7 +13,7 @@ from sieve.ui.widgets import Page, muted_label, open_url, primary_button
 
 class AboutPage(Page):
     def __init__(self, updates: UpdateController) -> None:
-        super().__init__("Hakkında")
+        super().__init__("About")
         self._updates = updates
 
         card = QFrame()
@@ -38,10 +38,10 @@ class AboutPage(Page):
         name = QLabel("Sieve")
         name.setObjectName("PageTitle")
         info.addWidget(name)
-        info.addWidget(muted_label(f"Sürüm {__version__}  ·  by {AUTHOR}"))
+        info.addWidget(muted_label(f"Version {__version__}  ·  by {AUTHOR}"))
         info.addSpacing(6)
         info.addWidget(QLabel(
-            "Veri kazıma iş akışlarını tek bir masaüstü uygulamasında toplayan araç seti."
+            "A desktop toolkit that brings data scraping workflows together in one app."
         ))
         info.addStretch(1)
         row.addLayout(info, 1)
@@ -51,15 +51,15 @@ class AboutPage(Page):
         update_card.setObjectName("Card")
         update_layout = QVBoxLayout(update_card)
         update_layout.setContentsMargins(20, 16, 20, 16)
-        heading = QLabel("Güncellemeler")
+        heading = QLabel("Updates")
         heading.setStyleSheet("font-weight: 600;")
         update_layout.addWidget(heading)
-        self._status = muted_label(updates.status or "Henüz kontrol edilmedi.")
+        self._status = muted_label(updates.status or "Not checked yet.")
         update_layout.addWidget(self._status)
 
         buttons = QHBoxLayout()
-        check = primary_button("Güncellemeleri kontrol et")
-        releases = QPushButton("Release sayfasını aç")
+        check = primary_button("Check for updates")
+        releases = QPushButton("Open releases page")
         check.clicked.connect(lambda: self._updates.check(manual=True))
         releases.clicked.connect(lambda: open_url(f"https://github.com/{GITHUB_REPO}/releases"))
         buttons.addWidget(check)
