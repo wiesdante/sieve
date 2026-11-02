@@ -47,7 +47,7 @@ the list is the order in the sidebar.
   (`channel="msedge"` in Playwright) so no browser has to be bundled.
 - **Keep logic separate from widgets** so it can be unit-tested without Qt.
 - **Data the user maintains** (keyword lists, presets) goes into `sieve.storage.JsonDocument`,
-  which lives in `%APPDATA%\\Sieve\\data` and survives restarts, updates and reinstalls.
+  which lives in `%APPDATA%\Sieve\data` and survives restarts, updates and reinstalls.
   Save it as the user edits and implement `save_state()` on the page; the main window
   calls it when the app closes.
 - **Secrets** (API keys, logins) go into `context.credentials`, never into settings.
