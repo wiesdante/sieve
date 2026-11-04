@@ -76,3 +76,22 @@ def test_empty_phrase_list_changes_nothing():
 def test_cancel():
     with pytest.raises(StripCancelledError):
         strip_lines(["x"] * 50_000, ["x"], cancelled=lambda: True)
+
+
+# ------------------------------------------------------------------- regex
+def test_regex_strip():
+    from sieve.core.text_stripper import PatternError
+
+    lines = ["Price: 120 TL (KDV dahil)", "Ref: AB-1234 Widget", "Plain"]
+    options = StripOptions(regex=True, trim_lines=True)
+    result = strip_lines(lines, [r"\(.*?\)", r"^Ref: [A-Z]{2}-\d+ ", r"^Price: "], options)
+    assert result.lines == ["120 TL", "Widget", "Plain"]
+    assert dict(result.phrase_hits)[r"\(.*?\)"] == 1
+
+    with pytest.raises(PatternError):
+        strip_lines(lines, ["[bad"], options)
+
+
+def test_regex_strip_ignore_case():
+    result = strip_lines(["EMAIL: a@b.c"], [r"email:\s*"], StripOptions(regex=True, ignore_case=True))
+    assert result.lines == ["a@b.c"]

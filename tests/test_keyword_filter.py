@@ -92,3 +92,23 @@ def test_invalid_mode():
 def test_cancel():
     with pytest.raises(FilterCancelledError):
         filter_lines(["x"] * 50_000, ["x"], cancelled=lambda: True)
+
+
+# ------------------------------------------------------------------- regex
+def test_regex_mode():
+    from sieve.core.keyword_filter import PatternError
+
+    lines = ["Order #12345 shipped", "Call 0212 555 55 55", "Hello world", "İstanbul ofisi"]
+    options = FilterOptions(mode=WHITELIST, regex=True)
+    result = filter_lines(lines, [r"#\d{5}", r"\d{4} \d{3}", "istanbul"], options)
+    assert result.kept == ["Order #12345 shipped", "Call 0212 555 55 55", "İstanbul ofisi"]
+    assert dict(result.keyword_hits)[r"#\d{5}"] == 1
+
+    with pytest.raises(PatternError) as info:
+        filter_lines(lines, ["(unclosed"], options)
+    assert info.value.errors[0][0] == "(unclosed"
+
+
+def test_regex_whole_word():
+    options = FilterOptions(mode=WHITELIST, regex=True, whole_word=True)
+    assert filter_lines(["cat", "category"], ["ca."], options).kept == ["cat"]

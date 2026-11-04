@@ -15,7 +15,9 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from sieve.core.keyword_filter import fold
+from sieve.core.keyword_filter import PatternError, check_patterns, fold
+
+__all__ = ["PatternError"]
 
 _PROGRESS_EVERY = 20_000
 
@@ -31,6 +33,8 @@ class StripOptions:
     trim_lines: bool = False
     #: Drop lines that are empty once the phrases have been removed.
     remove_empty: bool = False
+    #: Phrases are regular expressions; they are tried in the order written.
+    regex: bool = False
 
 
 @dataclass
@@ -65,6 +69,38 @@ def parse_phrases(text: str) -> list[str]:
             seen.add(phrase)
             phrases.append(phrase)
     return phrases
+
+
+class RegexStripper:
+    """Removes every match of a list of regular expressions in one pass."""
+
+    def __init__(self, patterns: list[str], ignore_case: bool = False) -> None:
+        errors = check_patterns(patterns)
+        if errors:
+            raise PatternError(errors)
+        self._patterns = list(dict.fromkeys(patterns))
+        if not self._patterns:
+            self._pattern = None
+            return
+        flags = re.IGNORECASE if ignore_case else 0
+        joined = "|".join(f"(?P<p{index}>{pattern})" for index, pattern in enumerate(self._patterns))
+        try:
+            self._pattern = re.compile(joined, flags)
+        except re.error as exc:  # e.g. two patterns defining the same group name
+            raise PatternError([("(combined)", str(exc))]) from exc
+
+    def strip(self, line: str, hits: dict[str, int]) -> str:
+        if self._pattern is None:
+            return line
+
+        def remove(match: re.Match[str]) -> str:
+            for index, pattern in enumerate(self._patterns):
+                if match.group(f"p{index}") is not None:
+                    hits[pattern] = hits.get(pattern, 0) + 1
+                    break
+            return ""
+
+        return self._pattern.sub(remove, line)
 
 
 class PhraseStripper:
@@ -105,7 +141,8 @@ def strip_lines(
     cancelled: Callable[[], bool] | None = None,
 ) -> StripResult:
     options = options or StripOptions()
-    stripper = PhraseStripper(phrases, options.ignore_case)
+    stripper_type = RegexStripper if options.regex else PhraseStripper
+    stripper = stripper_type(phrases, options.ignore_case)
     hits: dict[str, int] = {phrase: 0 for phrase in phrases}
     output: list[str] = []
     changed = dropped = 0

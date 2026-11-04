@@ -29,6 +29,8 @@ class FilterOptions:
     ignore_case: bool = True
     whole_word: bool = False
     skip_empty: bool = False
+    #: Keywords are regular expressions instead of plain text.
+    regex: bool = False
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -65,6 +67,47 @@ def parse_keywords(text: str) -> list[str]:
             seen.add(keyword)
             keywords.append(keyword)
     return keywords
+
+
+class PatternError(ValueError):
+    """One or more regular expressions are invalid; ``errors`` lists (pattern, message)."""
+
+    def __init__(self, errors: list[tuple[str, str]]) -> None:
+        self.errors = errors
+        super().__init__("; ".join(f"{pattern}: {message}" for pattern, message in errors))
+
+
+def check_patterns(patterns: list[str]) -> list[tuple[str, str]]:
+    """(pattern, error message) for every pattern that is not a valid regular expression."""
+    errors = []
+    for pattern in patterns:
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            errors.append((pattern, str(exc)))
+    return errors
+
+
+class RegexMatcher:
+    """Like KeywordMatcher, but every keyword is a regular expression."""
+
+    def __init__(self, patterns: list[str], ignore_case: bool = True, whole_word: bool = False):
+        errors = check_patterns(patterns)
+        if errors:
+            raise PatternError(errors)
+        self._ignore_case = ignore_case
+        flags = re.IGNORECASE if ignore_case else 0
+        self._compiled = [
+            (pattern, re.compile(rf"(?<!\w)(?:{pattern})(?!\w)" if whole_word else pattern, flags))
+            for pattern in dict.fromkeys(patterns)
+        ]
+
+    def __bool__(self) -> bool:
+        return bool(self._compiled)
+
+    def matches(self, line: str) -> set[str]:
+        haystack = line.replace("İ", "i") if self._ignore_case else line
+        return {pattern for pattern, compiled in self._compiled if compiled.search(haystack)}
 
 
 class KeywordMatcher:
@@ -108,7 +151,8 @@ def filter_lines(
     cancelled: Callable[[], bool] | None = None,
 ) -> FilterResult:
     options = options or FilterOptions()
-    matcher = KeywordMatcher(keywords, options.ignore_case, options.whole_word)
+    matcher_type = RegexMatcher if options.regex else KeywordMatcher
+    matcher = matcher_type(keywords, options.ignore_case, options.whole_word)
     hits: dict[str, int] = {keyword: 0 for keyword in keywords}
     kept: list[str] = []
     removed: list[str] = []
