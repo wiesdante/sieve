@@ -90,6 +90,7 @@ class EmailScraperTool(Tool):
 
     def self_check(self) -> None:
         import bs4  # noqa: F401
+        import dns.resolver  # noqa: F401
         import requests  # noqa: F401
 
     def create_widget(self, context: AppContext) -> QWidget:

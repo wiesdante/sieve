@@ -80,6 +80,7 @@ class LinkExtractorTool(Tool):
 
     def self_check(self) -> None:
         ensure_pdf_backend()
+        import dns.resolver  # noqa: F401
 
     def create_widget(self, context: AppContext) -> QWidget:
         return LinkExtractorPage(context)
