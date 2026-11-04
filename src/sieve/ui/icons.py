@@ -108,6 +108,15 @@ def _eraser(p: QPainter) -> None:
     p.drawLine(QPointF(11.5, 19.5), QPointF(20, 19.5))
 
 
+def _link(p: QPainter) -> None:
+    p.save()
+    p.translate(12, 12)
+    p.rotate(-45)
+    p.drawRoundedRect(QRectF(-9.5, -3.5, 10, 7), 3.5, 3.5)
+    p.drawRoundedRect(QRectF(-0.5, -3.5, 10, 7), 3.5, 3.5)
+    p.restore()
+
+
 def _tool(p: QPainter) -> None:
     for x, y in ((4, 4), (13, 4), (4, 13), (13, 13)):
         p.drawRoundedRect(QRectF(x, y, 7, 7), 1.5, 1.5)
@@ -122,6 +131,7 @@ ICONS: dict[str, Painter] = {
     "menu": _menu,
     "collapse": _collapse,
     "eraser": _eraser,
+    "link": _link,
     "tool": _tool,
 }
 
