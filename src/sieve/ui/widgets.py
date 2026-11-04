@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -106,6 +107,7 @@ class SegmentedControl(QObject):
             button.setCheckable(True)
             position = "left" if index == 0 else "right" if index == len(options) - 1 else "middle"
             button.setProperty("segment", position)
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setToolTip(tooltip)
             button.clicked.connect(lambda _=False, k=key: self.changed.emit(k))

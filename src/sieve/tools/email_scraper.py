@@ -15,6 +15,7 @@ from PySide6.QtGui import QColor, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -24,7 +25,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
-    QSpinBox,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -71,6 +71,7 @@ log = logging.getLogger(__name__)
 TOOL_ID = "email_scraper"
 SESSION_DOCUMENT = "email_scraper_session"
 LOG_LINE_LIMIT = 50_000
+WORKER_CHOICES = (1, 3, 5, 10, 15, 20, 30)
 MODE_HINTS = {
     STANDARD: "Scans each site's page, its contact pages, then common contact paths.",
     DIRECT: "Scans only the exact URLs you entered.",
@@ -206,26 +207,28 @@ class EmailScraperPage(ToolPage):
         self._use_proxies.setChecked(bool(self._prefs.get("use_proxies", False)))
         self._use_proxies.toggled.connect(self._save_options)
 
-        self._workers = QSpinBox()
-        self._workers.setRange(1, 40)
-        self._workers.setValue(int(self._prefs.get("workers", 10)))
-        self._workers.setToolTip("How many sites are scanned at the same time.")
-        self._workers.valueChanged.connect(self._save_options)
+        self._workers = QComboBox()
+        for count in WORKER_CHOICES:
+            self._workers.addItem(f"{count} at a time", count)
+        saved_workers = int(self._prefs.get("workers", 10))
+        index = self._workers.findData(saved_workers)
+        self._workers.setCurrentIndex(index if index >= 0 else self._workers.findData(10))
+        self._workers.setToolTip(
+            "How many sites are scanned at the same time.\n"
+            "Higher is faster but uses more bandwidth and may trigger rate limits."
+        )
+        self._workers.currentIndexChanged.connect(self._save_options)
 
         for widget in (self._filter_junk, rules, self._use_proxies):
             widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             row.addWidget(widget)
-        row.addWidget(muted_label("Parallel", wrap=False))
-        row.addWidget(self._workers)
         row.addStretch(1)
-        self._mode_hint = muted_label(wrap=False)
-        row.addWidget(self._mode_hint)
+        row.addWidget(self._workers)
         return bar
 
     def _apply_mode(self, mode: str, save: bool = True) -> None:
         self._mode = mode if mode in (STANDARD, DIRECT) else STANDARD
         self._mode_control.set_current(self._mode)
-        self._mode_hint.setText(MODE_HINTS[self._mode])
         if save:
             self._prefs["mode"] = self._mode
             self._context.save_settings()
@@ -251,7 +254,7 @@ class EmailScraperPage(ToolPage):
         self._prefs.update(
             filter_junk=self._filter_junk.isChecked(),
             use_proxies=self._use_proxies.isChecked(),
-            workers=self._workers.value(),
+            workers=self._workers.currentData(),
         )
         self._context.save_settings()
 
@@ -377,7 +380,7 @@ class EmailScraperPage(ToolPage):
 
         pool = self._context.proxy_pool() if self._use_proxies.isChecked() else None
         email_filter = load_filter() if self._filter_junk.isChecked() else None
-        options = ScrapeOptions(mode=self._mode, workers=self._workers.value())
+        options = ScrapeOptions(mode=self._mode, workers=self._workers.currentData())
 
         self._clear_results()
         self._total = len(sites)

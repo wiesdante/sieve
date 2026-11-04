@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import sys
+import time
 import traceback
 
 from sieve import APP_NAME, AUTHOR, __version__, paths, updater
@@ -49,9 +50,16 @@ def _run_smoke_test(app, window, screenshot_dir: str | None) -> int:
         Path(screenshot_dir).mkdir(parents=True, exist_ok=True)
         window.resize(1280, 800)
         window.show()
+    def settle() -> None:
+        # Let animations (such as the sidebar collapsing) finish before checking or grabbing.
+        deadline = time.monotonic() + (0.4 if screenshot_dir else 0.05)
+        while time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+
     for key in window.page_keys():
         window.navigate(key)
-        app.processEvents()
+        settle()
         if window.current_page_key() != key:
             log.error("Smoke test could not open page %s", key)
             return 1
@@ -61,7 +69,7 @@ def _run_smoke_test(app, window, screenshot_dir: str | None) -> int:
             page = window.current_page()
             if hasattr(page, "load_demo"):
                 page.load_demo()
-                app.processEvents()
+                settle()
                 window.grab().save(str(Path(screenshot_dir) / f"{name}_demo.png"))
     from sieve.tools import all_tools
 
