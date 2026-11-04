@@ -69,3 +69,22 @@ def test_progress_and_cancel():
     assert calls[-1] == (120_000, 120_000)
     with pytest.raises(DedupeCancelledError):
         remove_duplicates(lines, cancelled=lambda: True)
+
+
+def test_compare_as_urls():
+    lines = [
+        "https://www.Acme.com/",
+        "http://acme.com",
+        "acme.com",
+        "https://acme.com/shop",
+        "https://acme.com/shop/",
+        "https://acme.com/shop?id=1",
+        "not a url",
+        "Not a URL",
+    ]
+    result = remove_duplicates(lines, DedupeOptions(compare_as_urls=True))
+    assert result.lines == ["https://www.Acme.com/", "https://acme.com/shop", "https://acme.com/shop?id=1", "not a url"]
+
+
+def test_url_mode_off_keeps_variants():
+    assert len(remove_duplicates(["https://acme.com", "http://acme.com"]).lines) == 2

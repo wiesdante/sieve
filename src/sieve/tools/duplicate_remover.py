@@ -142,6 +142,12 @@ class DuplicateRemoverPage(ToolPage):
             "Off: each line is written exactly as it first appeared.\n"
             "On: lines are written lowercased with single spaces.",
         )
+        self._compare_urls = checkbox(
+            "compare_as_urls",
+            "Compare as URLs",
+            "Treat lines as web addresses: http/https, \"www.\" and a trailing slash do not matter,\n"
+            "so https://www.site.com/ and site.com count as the same line.",
+        )
         row.addStretch(1)
         self._sort = QComboBox()
         self._sort.setToolTip("Sort order of the result")
@@ -159,6 +165,7 @@ class DuplicateRemoverPage(ToolPage):
             collapse_whitespace=self._collapse_ws.isChecked(),
             remove_empty=self._remove_empty.isChecked(),
             output_normalized=self._output_normalized.isChecked(),
+            compare_as_urls=self._compare_urls.isChecked(),
             sort=self._sort.currentData(),
         )
 
@@ -169,6 +176,7 @@ class DuplicateRemoverPage(ToolPage):
             collapse_whitespace=options.collapse_whitespace,
             remove_empty=options.remove_empty,
             output_normalized=options.output_normalized,
+            compare_as_urls=options.compare_as_urls,
             sort=options.sort,
         )
         self._context.save_settings()
