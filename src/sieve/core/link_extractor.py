@@ -189,18 +189,23 @@ def _bare_domain_ok(tld: str) -> bool:
     return len(tld) == 2 or tld in _COMMON_TLDS
 
 
-def find_urls(text: str, include_bare_domains: bool = True) -> list[str]:
-    """Links written in ``text``, normalized, in order (duplicates kept)."""
-    text = _EMAIL.sub(" ", text)
-    urls: list[str] = []
+def _iter_urls(text: str, include_bare_domains: bool) -> Iterable[tuple[str, bool]]:
+    """Yield (normalized url, ends a line) for every link written in ``text``."""
+    text = _EMAIL.sub(lambda m: " " * len(m.group(0)), text)  # keep positions
     for match in _URL.finditer(text):
         bare = not match.group("scheme") and not match.group("www")
         if bare and not (include_bare_domains and _bare_domain_ok(match.group("tld"))):
             continue
         url = normalize(match.group("url"))
-        if domain_of(url):
-            urls.append(url)
-    return urls
+        if not domain_of(url):
+            continue
+        rest_of_line = text[match.end():].split("\n", 1)[0]
+        yield url, not rest_of_line.strip()
+
+
+def find_urls(text: str, include_bare_domains: bool = True) -> list[str]:
+    """Links written in ``text``, normalized, in order (duplicates kept)."""
+    return [url for url, _ in _iter_urls(text, include_bare_domains)]
 
 
 class LinkCollector:
@@ -246,11 +251,13 @@ class LinkCollector:
                 url = uri.strip().rstrip("/")
                 clickable_keys.append(url_key(url))
                 self.add(url, source, page, LINK)
-        for url in find_urls(text, self._options.include_bare_domains):
+        for url, ends_line in _iter_urls(text, self._options.include_bare_domains):
             key = url_key(url)
-            # A long link wrapped onto two lines shows up in the text cut short;
-            # the clickable link on the same page already has the full address.
-            if any(other != key and other.startswith(key) for other in clickable_keys):
+            # A long link wrapped onto the next line shows up in the text cut off
+            # at the end of a line; the clickable link already has the full address.
+            if ends_line and any(
+                other != key and other.startswith(key) for other in clickable_keys
+            ):
                 continue
             self.add(url, source, page, TEXT)
 

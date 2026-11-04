@@ -2,8 +2,10 @@ import pytest
 
 from sieve.core.link_extractor import (
     EMAILS,
+    LINK,
     TEXT,
     ExtractOptions,
+    LinkCollector,
     domain_of,
     emails_from_mailto,
     extract_from_text,
@@ -122,3 +124,22 @@ def test_email_domains_only():
 def test_invalid_mode():
     with pytest.raises(ValueError):
         ExtractOptions(mode="phones")
+
+
+# ------------------------------------------------- clickable + text on a page
+def test_domain_in_text_is_kept_next_to_deeper_clickable_link():
+    collector = LinkCollector()
+    collector.add_page(["https://acme.example/offer"], "Visit www.acme.example or shop.io", "a.pdf", 1)
+    assert [item.value for item in collector.links] == [
+        "https://acme.example/offer",
+        "https://www.acme.example",
+        "https://shop.io",
+    ]
+    assert collector.links[0].kind == LINK
+
+
+def test_link_cut_off_at_line_end_is_replaced_by_clickable_link():
+    collector = LinkCollector()
+    text = "Read https://example.com/very/long\n/address?q=1 now"
+    collector.add_page(["https://example.com/very/long/address?q=1"], text, "a.pdf", 1)
+    assert [item.value for item in collector.links] == ["https://example.com/very/long/address?q=1"]
