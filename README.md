@@ -24,6 +24,7 @@ and every tool shares the same settings, proxy pool and logging.
 
 | Tool | What it does |
 | --- | --- |
+| **Email Scraper** | Finds contact email addresses on a list of websites (pages, contact pages, common paths), with junk filtering and proxy support. |
 | **Duplicate Remover** | Removes repeated lines from pasted text while keeping the first occurrence and the original order. |
 | **Keyword Filter** | Keeps or removes lines that contain any keyword from a saved blacklist or whitelist. |
 | **Text Stripper** | Removes saved phrases such as labels and prefixes (`Email: `, `Phone: `) from every line. |

@@ -6,6 +6,36 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-04
+
+### Added
+
+- **Email Scraper** tool: paste a list of websites and collect their contact email addresses.
+  - **Standard** mode scans each site's page, visits the two pages that look most like a
+    contact page, and if nothing was found tries common paths such as `/contact` and
+    `/iletisim` (also inside language folders like `/tr/`). **Direct** mode scans only the
+    URLs you entered.
+  - Finds addresses in the page text and source, `mailto:` links, Cloudflare-protected
+    addresses, `(at)`/`[dot]` obfuscation, URL-encoded and escaped addresses, and in the
+    site's own scripts.
+  - Falls back from HTTPS to HTTP when the secure connection fails.
+  - Scans several sites at once and can use the proxy list from Settings, one proxy per site.
+  - Results appear live: unique emails, email details (site, page, how it was found), a
+    per-site table with status and errors, rejected addresses with the reason, and a log.
+  - **Stop** finishes the sites in progress; **Retry failed** puts failed sites back in the list.
+  - The last scan is saved automatically and restored when the app opens again.
+- **Junk filter** for email addresses, shared by Email Scraper and Link & Email Extractor:
+  removes placeholders, no-reply and system senders, disposable inboxes, tracking and CDN
+  domains, image names and token-like addresses. Every list can be edited under **Rules...**
+  and is kept across updates.
+- Link & Email Extractor: **Filter junk** option and a **Rejected** tab in Emails mode, so a
+  raw list of addresses can be cleaned by pasting it into the Text tab.
+
+### Changed
+
+- Email extraction now also decodes `%40`, `\u0040` and `(at)`/`[dot]` forms.
+- Email Scraper and Link & Email Extractor are listed first in the sidebar.
+
 ## [0.7.0] - 2026-11-04
 
 ### Added
@@ -126,7 +156,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/wiesdante/sieve/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/wiesdante/sieve/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/wiesdante/sieve/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/wiesdante/sieve/compare/v0.4.1...v0.5.0
