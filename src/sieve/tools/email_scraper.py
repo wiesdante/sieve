@@ -57,6 +57,7 @@ from sieve.storage import JsonDocument
 from sieve.tools.base import Tool
 from sieve.ui import theme
 from sieve.ui.email_rules import EmailRulesDialog, load_filter
+from sieve.ui.routing import SendToButton, notify_finished
 from sieve.ui.tasks import BackgroundTask, run_in_background
 from sieve.ui.widgets import (
     SegmentedControl,
@@ -389,6 +390,8 @@ class EmailScraperPage(ToolPage):
         self._copy_sites_button.clicked.connect(self._copy_sites)
         self._retry_button.clicked.connect(self._retry_failed)
         footer.addWidget(self._copy_details_button)
+        self._send_button = SendToButton(TOOL_ID, lambda: "\n".join(self._emails))
+        footer.addWidget(self._send_button)
         footer.addWidget(self._copy_sites_button)
         footer.addWidget(self._retry_button)
         footer.addStretch(1)
@@ -485,6 +488,7 @@ class EmailScraperPage(ToolPage):
         )
         self._update_stats()
         self._save_session()
+        notify_finished(self)
 
     def _on_error(self, exc: Exception) -> None:
         self._task = None
@@ -566,6 +570,7 @@ class EmailScraperPage(ToolPage):
         self._stats.setText(stats_html(items))
         has_emails = bool(self._emails)
         self._copy_button.setEnabled(has_emails)
+        self._send_button.setEnabled(has_emails)
         self._copy_details_button.setEnabled(has_emails)
         self._copy_sites_button.setEnabled(bool(self._results))
         retryable = sum(counts[status] for status in RETRYABLE)
@@ -596,6 +601,13 @@ class EmailScraperPage(ToolPage):
             )
         QGuiApplication.clipboard().setText("\n".join(lines))
         flash_button(self._copy_sites_button, "Copied ✓")
+
+    def receive_text(self, text: str) -> None:
+        if self._task is not None:
+            QMessageBox.information(self, EmailScraperTool.name, "Wait for the current scan to finish first.")
+            return
+        self._sites.setPlainText(text)
+        self._sites.setFocus()
 
     def _retry_failed(self) -> None:
         failed = [result.site for result in self._results if result.status in RETRYABLE]

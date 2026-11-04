@@ -43,6 +43,7 @@ from sieve.storage import JsonDocument
 from sieve.tools.base import Tool
 from sieve.ui import theme
 from sieve.ui.presets import PresetBar
+from sieve.ui.routing import SendToButton
 from sieve.ui.tasks import BackgroundTask, run_in_background
 from sieve.ui.widgets import (
     ToolPage,
@@ -373,6 +374,8 @@ class TextStripperPage(ToolPage):
         )
         self._to_input_button.clicked.connect(self._use_as_input)
         footer.addWidget(self._to_input_button)
+        self._send_button = SendToButton(TOOL_ID, self._result_text)
+        footer.addWidget(self._send_button)
         footer.addStretch(1)
         self._auto_copy = QCheckBox("Auto-copy")
         self._auto_copy.setToolTip("Copy the result to the clipboard as soon as it is ready.")
@@ -450,6 +453,7 @@ class TextStripperPage(ToolPage):
 
     def _show_result(self, result: StripResult | None) -> None:
         self._copy_button.setEnabled(result is not None)
+        self._send_button.setEnabled(result is not None)
         self._to_input_button.setEnabled(result is not None)
         if result is None:
             self._stats.setText(stats_html([("Lines", 0, None), ("Changed", 0, None), ("Removed", 0, None)]))
@@ -489,6 +493,13 @@ class TextStripperPage(ToolPage):
             return
         QGuiApplication.clipboard().setText("\n".join(self._result.lines))
         flash_button(self._copy_button, "Copied ✓")
+
+    def _result_text(self) -> str:
+        return "\n".join(self._result.lines) if self._result else ""
+
+    def receive_text(self, text: str) -> None:
+        self._input.setPlainText(text)
+        self._input.setFocus()
 
     def _use_as_input(self) -> None:
         if self._result:

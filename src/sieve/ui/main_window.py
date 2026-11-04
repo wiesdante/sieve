@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from sieve import APP_NAME, AUTHOR, __version__, paths
 from sieve.context import AppContext
 from sieve.tools import Tool, all_tools
+from sieve.ui import routing
 from sieve.ui.icons import icon
 from sieve.ui.pages.about import AboutPage
 from sieve.ui.pages.home import HomePage
@@ -69,6 +70,9 @@ class MainWindow(QMainWindow):
         self._add_page(SETTINGS, settings)
         self._add_page(ABOUT, AboutPage(self.updates))
 
+        routing.install(
+            [(tool.id, tool.name, tool.icon) for tool in self._tools.values()], self.deliver_text
+        )
         self._restore_geometry()
         self.navigate(HOME)
 
@@ -249,6 +253,15 @@ class MainWindow(QMainWindow):
         self._sync_selection(key)
         # Tools get the full width; the other pages show the full sidebar.
         self.set_sidebar_expanded(not key.startswith(TOOL_PREFIX), animate=self.isVisible())
+
+    def deliver_text(self, tool_id: str, text: str) -> None:
+        """Open a tool and put ``text`` into its input (used by "Send to")."""
+        key = TOOL_PREFIX + tool_id
+        self.navigate(key)
+        page = self._pages.get(key)
+        receive = getattr(page, "receive_text", None)
+        if callable(receive):
+            receive(text)
 
     def _sync_selection(self, key: str) -> None:
         for nav in (self._main_nav, self._bottom_nav):

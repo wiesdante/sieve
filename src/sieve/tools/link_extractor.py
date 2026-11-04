@@ -49,6 +49,7 @@ from sieve.core.link_extractor import (
 from sieve.tools.base import Tool
 from sieve.ui import theme
 from sieve.ui.email_rules import EmailRulesDialog, load_filter
+from sieve.ui.routing import SendToButton, notify_finished
 from sieve.ui.tasks import BackgroundTask, run_in_background
 from sieve.ui.widgets import (
     FileDropList,
@@ -375,6 +376,8 @@ class LinkExtractorPage(ToolPage):
         )
         self._copy_details_button.clicked.connect(self._copy_details)
         footer.addWidget(self._copy_details_button)
+        self._send_button = SendToButton(TOOL_ID, self._result_text)
+        footer.addWidget(self._send_button)
         footer.addStretch(1)
         self._auto_copy = QCheckBox("Auto-copy")
         self._auto_copy.setToolTip("Copy the result to the clipboard as soon as it is ready.")
@@ -446,12 +449,14 @@ class LinkExtractorPage(ToolPage):
         self._set_running(False)
         self._result = result
         self._show_result(result)
+        notify_finished(self)
         if self._auto_copy.isChecked() and result.links:
             self._copy_output()
 
     def _show_result(self, result: ExtractResult | None) -> None:
         has_items = bool(result and result.links)
         self._copy_button.setEnabled(has_items)
+        self._send_button.setEnabled(has_items)
         self._copy_details_button.setEnabled(has_items)
         if result is None:
             self._stats.setText(stats_html([("Found", 0, None), ("Unique", 0, None)]))
@@ -499,6 +504,14 @@ class LinkExtractorPage(ToolPage):
         self._result_tabs.setTabVisible(3, bool(result.rejected))
         self._result_tabs.setTabText(3, f"Rejected ({len(result.rejected)})")
         self._result_tabs.setCurrentIndex(0)
+
+    def _result_text(self) -> str:
+        return "\n".join(self._result.lines) if self._result else ""
+
+    def receive_text(self, text: str) -> None:
+        self._source_tabs.setCurrentIndex(TEXT_TAB)
+        self._text.setPlainText(text)
+        self._text.setFocus()
 
     def _copy_output(self) -> None:
         if not self._result or not self._result.links:
