@@ -38,12 +38,15 @@ from sieve.core.keyword_filter import (
     FilterCancelledError,
     FilterOptions,
     FilterResult,
+    PatternError,
     filter_lines,
     parse_keywords,
 )
+from sieve.core.presets import PresetLists
 from sieve.storage import JsonDocument
 from sieve.tools.base import Tool
 from sieve.ui import theme
+from sieve.ui.presets import PresetBar
 from sieve.ui.tasks import BackgroundTask, run_in_background
 from sieve.ui.widgets import (
     SegmentedControl,
@@ -166,6 +169,12 @@ class KeywordFilterPage(ToolPage):
         self._skip_empty = checkbox(
             "skip_empty", "Skip empty lines", "Drop empty lines in both modes."
         )
+        self._regex = checkbox(
+            "regex",
+            "Regex",
+            "Treat every keyword as a regular expression, e.g. \\d{5} or (casino|bet).\n"
+            "Whole words and Ignore case still apply.",
+        )
         row.addStretch(1)
         self._mode_hint = muted_label(wrap=False)
         row.addWidget(self._mode_hint)
@@ -177,6 +186,7 @@ class KeywordFilterPage(ToolPage):
         self._mode = mode
         self._mode_control.set_current(mode)
         self._lists_stack.setCurrentWidget(self._list_editors[mode])
+        self._preset_bar.set_presets(self._presets[mode])
         self._keywords_title.setText("Blacklist" if mode == BLACKLIST else "Whitelist")
         self._mode_hint.setText(MODE_HINTS[mode])
         self._update_keyword_count()
@@ -190,6 +200,7 @@ class KeywordFilterPage(ToolPage):
             ignore_case=self._ignore_case.isChecked(),
             whole_word=self._whole_word.isChecked(),
             skip_empty=self._skip_empty.isChecked(),
+            regex=self._regex.isChecked(),
         )
 
     def _save_options(self) -> None:
@@ -197,6 +208,7 @@ class KeywordFilterPage(ToolPage):
             ignore_case=self._ignore_case.isChecked(),
             whole_word=self._whole_word.isChecked(),
             skip_empty=self._skip_empty.isChecked(),
+            regex=self._regex.isChecked(),
         )
         self._context.save_settings()
 
@@ -276,6 +288,12 @@ class KeywordFilterPage(ToolPage):
         header.addWidget(self._keyword_count)
         header.addStretch(1)
 
+        self._presets: dict[str, PresetLists] = {BLACKLIST: PresetLists(), WHITELIST: PresetLists()}
+        self._preset_bar = PresetBar("list")
+        self._preset_bar.selected.connect(self._on_preset_selected)
+        self._preset_bar.changed.connect(self._schedule_save)
+        body.addWidget(self._preset_bar)
+
         self._lists_stack = QStackedWidget()
         self._list_editors: dict[str, QPlainTextEdit] = {}
         for mode in (BLACKLIST, WHITELIST):
@@ -305,13 +323,27 @@ class KeywordFilterPage(ToolPage):
     def _load_lists(self) -> None:
         data = self._lists_doc.load()
         for mode, editor in self._list_editors.items():
-            value = data.get(mode, "")
-            editor.blockSignals(True)
-            editor.setPlainText(value if isinstance(value, str) else "")
-            editor.blockSignals(False)
+            # Older versions stored one plain text list per mode.
+            self._presets[mode] = PresetLists.from_data(data.get(mode))
+            self._set_editor_text(editor, self._presets[mode].text)
+
+    @staticmethod
+    def _set_editor_text(editor: QPlainTextEdit, text: str) -> None:
+        editor.blockSignals(True)
+        editor.setPlainText(text)
+        editor.blockSignals(False)
+
+    def _on_preset_selected(self, _name: str) -> None:
+        self._set_editor_text(self._list_editors[self._mode], self._presets[self._mode].text)
+        self._update_keyword_count()
 
     def _on_list_edited(self) -> None:
+        presets = self._presets[self._mode]
+        presets.lists[presets.current] = self._list_editors[self._mode].toPlainText()
         self._update_keyword_count()
+        self._schedule_save()
+
+    def _schedule_save(self) -> None:
         if self._persist_lists:
             self._saved_label.setText("Saving...")
             self._save_timer.start()
@@ -321,7 +353,7 @@ class KeywordFilterPage(ToolPage):
         self._save_timer.stop()
         if not self._persist_lists:
             return
-        data = {mode: editor.toPlainText() for mode, editor in self._list_editors.items()}
+        data = {"version": 2, **{mode: presets.to_data() for mode, presets in self._presets.items()}}
         try:
             self._lists_doc.save(data)
         except OSError:
@@ -442,6 +474,12 @@ class KeywordFilterPage(ToolPage):
         self._set_running(False)
         if isinstance(exc, FilterCancelledError):
             return
+        if isinstance(exc, PatternError):
+            details = "\n".join(f"• {pattern}  —  {message}" for pattern, message in exc.errors[:10])
+            QMessageBox.warning(
+                self, "Keyword Filter", f"Some keywords are not valid regular expressions:\n\n{details}"
+            )
+            return
         log.error("Keyword filtering failed", exc_info=exc)
         QMessageBox.critical(self, "Keyword Filter", f"An unexpected error occurred:\n{exc}")
 
@@ -519,7 +557,11 @@ class KeywordFilterPage(ToolPage):
     def load_demo(self) -> None:
         """Fill the page with sample data without touching the saved lists (CI screenshots)."""
         self._persist_lists = False
+        self._presets[BLACKLIST] = PresetLists({"Spam words": "", "Competitors": "acme\nglobex"}, "Spam words")
+        self._presets[WHITELIST] = PresetLists()
+        self._apply_mode(BLACKLIST, save=False)
         self._list_editors[BLACKLIST].setPlainText("casino\nloan\nfree money\nunused keyword")
+        self._apply_mode(WHITELIST, save=False)
         self._list_editors[WHITELIST].setPlainText("shoes\nİstanbul")
         self._input.setPlainText("\n".join([
             "Running shoes - 20% off",

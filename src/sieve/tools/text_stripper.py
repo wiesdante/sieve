@@ -30,7 +30,9 @@ from PySide6.QtWidgets import (
 )
 
 from sieve.context import AppContext
+from sieve.core.presets import PresetLists
 from sieve.core.text_stripper import (
+    PatternError,
     StripCancelledError,
     StripOptions,
     StripResult,
@@ -40,6 +42,7 @@ from sieve.core.text_stripper import (
 from sieve.storage import JsonDocument
 from sieve.tools.base import Tool
 from sieve.ui import theme
+from sieve.ui.presets import PresetBar
 from sieve.ui.tasks import BackgroundTask, run_in_background
 from sieve.ui.widgets import (
     ToolPage,
@@ -156,15 +159,32 @@ class TextStripperPage(ToolPage):
             "Drop empty lines",
             "Remove lines that are empty once the phrases have been stripped.",
         )
+        self._regex = checkbox(
+            "regex",
+            "Regex",
+            "Treat every phrase as a regular expression, e.g. \\(.*?\\) removes anything in brackets.\n"
+            "Without Regex, phrases are matched literally, longest first.",
+        )
+        self._regex.toggled.connect(self._update_mode_hint)
         row.addStretch(1)
-        row.addWidget(muted_label("Every match is removed, longest phrase first.", wrap=False))
+        self._mode_hint = muted_label(wrap=False)
+        row.addWidget(self._mode_hint)
+        self._update_mode_hint()
         return bar
+
+    def _update_mode_hint(self) -> None:
+        self._mode_hint.setText(
+            "Patterns are tried in the order written."
+            if self._regex.isChecked()
+            else "Every match is removed, longest phrase first."
+        )
 
     def _options(self) -> StripOptions:
         return StripOptions(
             ignore_case=self._ignore_case.isChecked(),
             trim_lines=self._trim_lines.isChecked(),
             remove_empty=self._remove_empty.isChecked(),
+            regex=self._regex.isChecked(),
         )
 
     def _save_options(self) -> None:
@@ -173,6 +193,7 @@ class TextStripperPage(ToolPage):
             ignore_case=options.ignore_case,
             trim_lines=options.trim_lines,
             remove_empty=options.remove_empty,
+            regex=options.regex,
         )
         self._context.save_settings()
 
@@ -248,6 +269,12 @@ class TextStripperPage(ToolPage):
         header.addWidget(self._phrase_count)
         header.addStretch(1)
 
+        self._presets = PresetLists()
+        self._preset_bar = PresetBar("list")
+        self._preset_bar.selected.connect(self._on_preset_selected)
+        self._preset_bar.changed.connect(self._schedule_save)
+        body.addWidget(self._preset_bar)
+
         self._phrases = _editor("One phrase per line, e.g.\nEmail: \nPhone: ")
         # Make spaces visible: "Email: " and "Email:" strip differently.
         option = self._phrases.document().defaultTextOption()
@@ -269,14 +296,27 @@ class TextStripperPage(ToolPage):
         self._phrase_count.setText(f"· {format_number(len(self._current_phrases()))} phrases")
 
     def _load_phrases(self) -> None:
-        value = self._phrases_doc.load().get("phrases", "")
+        data = self._phrases_doc.load()
+        # Older versions stored a single list under "phrases".
+        self._presets = PresetLists.from_data(data if "lists" in data else data.get("phrases"))
+        self._preset_bar.set_presets(self._presets)
+        self._show_current_preset()
+
+    def _show_current_preset(self) -> None:
         self._phrases.blockSignals(True)
-        self._phrases.setPlainText(value if isinstance(value, str) else "")
+        self._phrases.setPlainText(self._presets.text)
         self._phrases.blockSignals(False)
         self._update_phrase_count()
 
+    def _on_preset_selected(self, _name: str) -> None:
+        self._show_current_preset()
+
     def _on_phrases_edited(self) -> None:
+        self._presets.lists[self._presets.current] = self._phrases.toPlainText()
         self._update_phrase_count()
+        self._schedule_save()
+
+    def _schedule_save(self) -> None:
         if self._persist_phrases:
             self._saved_label.setText("Saving...")
             self._save_timer.start()
@@ -287,7 +327,7 @@ class TextStripperPage(ToolPage):
         if not self._persist_phrases:
             return
         try:
-            self._phrases_doc.save({"phrases": self._phrases.toPlainText()})
+            self._phrases_doc.save({"version": 2, **self._presets.to_data()})
         except OSError:
             log.exception("Could not save strip phrases")
             self._saved_label.setText("Could not save, see log")
@@ -391,6 +431,12 @@ class TextStripperPage(ToolPage):
         self._set_running(False)
         if isinstance(exc, StripCancelledError):
             return
+        if isinstance(exc, PatternError):
+            details = "\n".join(f"• {pattern}  —  {message}" for pattern, message in exc.errors[:10])
+            QMessageBox.warning(
+                self, "Text Stripper", f"Some phrases are not valid regular expressions:\n\n{details}"
+            )
+            return
         log.error("Text stripping failed", exc_info=exc)
         QMessageBox.critical(self, "Text Stripper", f"An unexpected error occurred:\n{exc}")
 
@@ -452,6 +498,8 @@ class TextStripperPage(ToolPage):
     def load_demo(self) -> None:
         """Fill the page with sample data without touching the saved list (CI screenshots)."""
         self._persist_phrases = False
+        self._presets = PresetLists({"Contact labels": "", "Price cleanup": "Price: \nTL"}, "Contact labels")
+        self._preset_bar.set_presets(self._presets)
         self._phrases.setPlainText("Email: \nPhone: \nWebsite: https://\n(Sponsored)")
         self._input.setPlainText("\n".join([
             "Email: john@example.com",
