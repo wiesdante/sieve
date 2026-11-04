@@ -63,6 +63,14 @@ def _run_smoke_test(app, window, screenshot_dir: str | None) -> int:
                 page.load_demo()
                 app.processEvents()
                 window.grab().save(str(Path(screenshot_dir) / f"{name}_demo.png"))
+    from sieve.tools import all_tools
+
+    for tool in all_tools():
+        try:
+            tool.self_check()
+        except Exception:
+            log.exception("Self-check failed for tool %s", tool.id)
+            return 1
     log.info("Smoke test passed")
     return 0
 

@@ -23,6 +23,13 @@ class Tool(ABC):
     #: Sidebar icon name from ``sieve.ui.icons.ICONS``.
     icon: str = "tool"
 
+    def self_check(self) -> None:
+        """Raise if something the tool needs is missing from the build.
+
+        Called by the startup smoke test on every release build.
+        """
+        return None
+
     @abstractmethod
     def create_widget(self, context: AppContext) -> QWidget:
         """Build the tool's page. Called once, the first time it is opened."""
