@@ -1,0 +1,38 @@
+name: Update data
+
+# Refreshes the bundled reference lists (top-level domains, disposable email
+# domains) once a month. Changes reach users with the next release.
+on:
+  schedule:
+    - cron: "17 4 3 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    name: Refresh reference lists
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Download lists
+        run: python scripts/update_data.py
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet -- assets/data && [ -z "$(git ls-files --others --exclude-standard assets/data)" ]; then
+            echo "Lists are up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/data
+          git commit -m "chore(data): update reference lists"
+          git push
