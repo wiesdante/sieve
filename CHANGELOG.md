@@ -6,6 +6,28 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-04
+
+### Added
+
+- **Link & Email Extractor** tool: collect web links or email addresses from one or more PDF
+  files (drag and drop or Add PDFs...) or from pasted text.
+  - **Links** mode combines clickable links with addresses written in the text
+    (`https://...`, `www....` and optionally bare domains such as `example.com`).
+    File names like `report.pdf` and sentences without a space after the full stop are ignored.
+  - **Emails** mode combines `mailto:` links with addresses written in the text.
+    Image names like `logo@2x.png` are ignored.
+  - Duplicates are removed: for links, http/https, `www.`, letter case in the domain and a
+    trailing slash do not matter; for emails, letter case does not matter.
+  - **Domains only** outputs just the site of each link or the domain of each email.
+  - **Details** shows the file, page and kind of every result and can be copied as a table.
+  - Password-protected or damaged PDFs are listed under **Problems**; the other files are
+    still processed.
+
+### Changed
+
+- Release builds now check that every tool's dependencies are included before publishing.
+
 ## [0.6.0] - 2026-11-04
 
 ### Added
@@ -104,7 +126,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/wiesdante/sieve/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/wiesdante/sieve/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/wiesdante/sieve/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/wiesdante/sieve/compare/v0.4.0...v0.4.1
