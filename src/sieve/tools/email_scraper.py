@@ -35,11 +35,15 @@ from PySide6.QtWidgets import (
 from sieve.context import AppContext
 from sieve.core.email_filter import EmailFilter
 from sieve.core.email_scraper import (
+    BLOCKED,
     DIRECT,
     EMPTY,
     FAILED,
+    FORM_ONLY,
     FOUND,
+    PARKED,
     STANDARD,
+    STATUSES,
     FoundEmail,
     HttpFetcher,
     ScrapeOptions,
@@ -76,9 +80,37 @@ MODE_HINTS = {
     STANDARD: "Scans each site's page, its contact pages, then common contact paths.",
     DIRECT: "Scans only the exact URLs you entered.",
 }
-STATUS_LABELS = {FOUND: "Found", EMPTY: "No emails", FAILED: "Failed"}
-STATUS_COLORS = {FOUND: theme.SUCCESS, EMPTY: theme.TEXT_MUTED, FAILED: theme.DANGER}
-HOW_LABELS = {"text": "Page text", "link": "mailto link", "protected": "Protected", "script": "Script"}
+STATUS_LABELS = {
+    FOUND: "Found",
+    FORM_ONLY: "Form only",
+    EMPTY: "No emails",
+    PARKED: "Parked",
+    BLOCKED: "Blocked",
+    FAILED: "Failed",
+}
+STATUS_TIPS = {
+    FORM_ONLY: "No address on the site, only a contact form.",
+    PARKED: "The domain is parked or for sale; there is no company site.",
+    BLOCKED: "Bot protection or a captcha answered instead of the site. Retrying with proxies may help.",
+    FAILED: "The site could not be opened.",
+}
+STATUS_COLORS = {
+    FOUND: theme.SUCCESS,
+    FORM_ONLY: theme.ACCENT_HOVER,
+    EMPTY: theme.TEXT_MUTED,
+    PARKED: theme.TEXT_MUTED,
+    BLOCKED: theme.WARNING,
+    FAILED: theme.DANGER,
+}
+RETRYABLE = (FAILED, BLOCKED)
+HOW_LABELS = {
+    "structured": "Site data (schema.org)",
+    "link": "mailto link",
+    "protected": "Cloudflare-protected",
+    "text": "Page text",
+    "source": "Page source",
+    "script": "Script",
+}
 
 
 class EmailScraperTool(Tool):
@@ -350,7 +382,8 @@ class EmailScraperPage(ToolPage):
             "Copy sites table", "Copy the Sites table (pastes into Excel)."
         )
         self._retry_button = compact_button(
-            "Retry failed", "Put the sites that failed back into the list."
+            "Retry failed", "Put the sites that failed or were blocked back into the list.\n"
+            "Blocked sites often work again with proxies turned on."
         )
         self._copy_details_button.clicked.connect(self._copy_details)
         self._copy_sites_button.clicked.connect(self._copy_sites)
@@ -497,6 +530,8 @@ class EmailScraperPage(ToolPage):
         ])
         status_item = self._sites_table.item(row, 1)
         status_item.setForeground(QColor(STATUS_COLORS.get(result.status, theme.TEXT)))
+        if result.status in STATUS_TIPS:
+            status_item.setToolTip(STATUS_TIPS[result.status])
         for column in (2, 3, 4):
             self._sites_table.item(row, column).setTextAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -515,16 +550,17 @@ class EmailScraperPage(ToolPage):
         return row
 
     def _update_stats(self) -> None:
-        counts = {status: 0 for status in (FOUND, EMPTY, FAILED)}
+        counts = dict.fromkeys(STATUSES, 0)
         for result in self._results:
             counts[result.status] = counts.get(result.status, 0) + 1
         items = [
             ("Sites", len(self._results), None),
-            ("With emails", counts[FOUND], theme.SUCCESS if counts[FOUND] else None),
-            ("Empty", counts[EMPTY], None),
-            ("Failed", counts[FAILED], theme.DANGER if counts[FAILED] else None),
             ("Emails", len(self._emails), theme.SUCCESS if self._emails else None),
+            ("Found", counts[FOUND], theme.SUCCESS if counts[FOUND] else None),
         ]
+        for status in (FORM_ONLY, EMPTY, PARKED, BLOCKED, FAILED):
+            if counts[status]:
+                items.append((STATUS_LABELS[status], counts[status], STATUS_COLORS[status]))
         if self._rejected:
             items.append(("Rejected", len(self._rejected), theme.WARNING))
         self._stats.setText(stats_html(items))
@@ -532,7 +568,8 @@ class EmailScraperPage(ToolPage):
         self._copy_button.setEnabled(has_emails)
         self._copy_details_button.setEnabled(has_emails)
         self._copy_sites_button.setEnabled(bool(self._results))
-        self._retry_button.setEnabled(counts[FAILED] > 0 and self._task is None)
+        retryable = sum(counts[status] for status in RETRYABLE)
+        self._retry_button.setEnabled(retryable > 0 and self._task is None)
         self._tabs.setTabText(3, f"Rejected ({len(self._rejected)})" if self._rejected else "Rejected")
 
     # ------------------------------------------------------------- clipboard
@@ -561,7 +598,7 @@ class EmailScraperPage(ToolPage):
         flash_button(self._copy_sites_button, "Copied ✓")
 
     def _retry_failed(self) -> None:
-        failed = [result.site for result in self._results if result.status == FAILED]
+        failed = [result.site for result in self._results if result.status in RETRYABLE]
         if failed:
             self._sites.setPlainText("\n".join(failed))
             self._sites.setFocus()
@@ -578,6 +615,7 @@ class EmailScraperPage(ToolPage):
                 {
                     "site": r.site, "status": r.status, "final_url": r.final_url,
                     "pages": r.pages, "error": r.error, "elapsed": round(r.elapsed, 2),
+                    "language": r.language, "contact_form": r.contact_form,
                     "emails": [[f.email, f.page, f.how] for f in r.emails],
                     "rejected": [list(item) for item in r.rejected],
                 }
@@ -601,7 +639,8 @@ class EmailScraperPage(ToolPage):
                     emails=[FoundEmail(*email) for email in item.get("emails", [])],
                     rejected=[tuple(pair) for pair in item.get("rejected", [])],
                     pages=int(item.get("pages", 0)), error=item.get("error", ""),
-                    elapsed=float(item.get("elapsed", 0)),
+                    elapsed=float(item.get("elapsed", 0)), language=item.get("language", ""),
+                    contact_form=item.get("contact_form", ""),
                 )
                 self._add_result(result, write_log=False)
         except (KeyError, TypeError, ValueError):
@@ -623,19 +662,30 @@ class EmailScraperPage(ToolPage):
     def load_demo(self) -> None:
         """Show sample results without network access or saving (CI screenshots)."""
         self._persist_session = False
-        self._sites.setPlainText("acme.example\nshop.example\nold-site.example\nempty.example")
+        self._sites.setPlainText(
+            "acme.example\nfirma.example\nshop.example\nform.example\nparked.example\n"
+            "guarded.example\nold-site.example"
+        )
         self._clear_results()
-        self._total = 4
+        self._total = 7
         samples = [
             SiteResult("https://acme.example", FOUND, "https://acme.example/", [
-                FoundEmail("info@acme.example", "https://acme.example/iletisim", "text"),
-                FoundEmail("sales@acme.example", "https://acme.example/iletisim", "link"),
-            ], [("noreply@acme.example", "Blocked username (noreply)")], 3, "", 2.4),
+                FoundEmail("info@acme.example", "https://acme.example/", "structured"),
+                FoundEmail("sales@acme.example", "https://acme.example/contact", "link"),
+            ], [("noreply@acme.example", "Automated sender (noreply)")], 3, "", 2.4, "en"),
+            SiteResult("https://firma.example", FOUND, "https://firma.example/", [
+                FoundEmail("buero@firma.example", "https://firma.example/impressum", "text"),
+            ], [], 2, "", 1.9, "de"),
             SiteResult("https://shop.example", FOUND, "https://www.shop.example/tr/", [
-                FoundEmail("destek@shop.example", "https://www.shop.example/tr/contact", "protected"),
-            ], [("a8f3k2m9x7q1w5e4z@shop.example", "Looks like a token or hash")], 5, "", 4.1),
-            SiteResult("https://old-site.example", FAILED, error="SSL error", pages=2, elapsed=1.2),
-            SiteResult("https://empty.example", EMPTY, "https://empty.example/", [], [], 7, "", 6.8),
+                FoundEmail("destek@shop.example", "https://www.shop.example/tr/iletisim", "protected"),
+            ], [("a8f3k2m9x7q1w5e4z@shop.example", "Random-looking username")], 5, "", 4.1, "tr"),
+            SiteResult("https://form.example", FORM_ONLY, "https://form.example/", [], [], 6,
+                       "Only a contact form (https://form.example/contact)", 5.2, "en"),
+            SiteResult("https://parked.example", PARKED, "https://parked.example/", [], [], 1,
+                       "Parked or for-sale domain", 0.8),
+            SiteResult("https://guarded.example", BLOCKED, "https://guarded.example/", [], [], 1,
+                       "Bot protection or captcha (HTTP 503)", 1.1),
+            SiteResult("https://old-site.example", FAILED, error="SSL error", pages=3, elapsed=1.2),
         ]
         for result in samples:
             self._add_result(result, write_log=False)
