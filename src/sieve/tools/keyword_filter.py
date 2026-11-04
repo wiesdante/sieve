@@ -13,7 +13,6 @@ from PySide6.QtCore import QByteArray, Qt, QTimer
 from PySide6.QtGui import QColor, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QButtonGroup,
     QCheckBox,
     QFrame,
     QHBoxLayout,
@@ -47,6 +46,7 @@ from sieve.tools.base import Tool
 from sieve.ui import theme
 from sieve.ui.tasks import BackgroundTask, run_in_background
 from sieve.ui.widgets import (
+    SegmentedControl,
     ToolPage,
     compact_button,
     flash_button,
@@ -134,22 +134,15 @@ class KeywordFilterPage(ToolPage):
         row.setContentsMargins(14, 8, 14, 8)
         row.setSpacing(14)
 
-        self._mode_buttons: dict[str, QPushButton] = {}
-        self._mode_group = QButtonGroup(self)
-        self._mode_group.setExclusive(True)
-        segment = QHBoxLayout()
-        segment.setSpacing(0)
-        for mode, label in ((BLACKLIST, "Blacklist"), (WHITELIST, "Whitelist")):
-            button = QPushButton(label)
-            button.setCheckable(True)
-            button.setProperty("segment", mode)
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setToolTip(MODE_HINTS[mode])
-            button.clicked.connect(lambda _=False, m=mode: self._apply_mode(m))
-            self._mode_group.addButton(button)
-            self._mode_buttons[mode] = button
-            segment.addWidget(button)
-        row.addLayout(segment)
+        self._mode_control = SegmentedControl(
+            [
+                (BLACKLIST, "Blacklist", MODE_HINTS[BLACKLIST]),
+                (WHITELIST, "Whitelist", MODE_HINTS[WHITELIST]),
+            ],
+            self,
+        )
+        self._mode_control.changed.connect(self._apply_mode)
+        row.addLayout(self._mode_control.layout)
 
         defaults = FilterOptions()
 
@@ -182,7 +175,7 @@ class KeywordFilterPage(ToolPage):
         if mode not in (BLACKLIST, WHITELIST):
             mode = BLACKLIST
         self._mode = mode
-        self._mode_buttons[mode].setChecked(True)
+        self._mode_control.set_current(mode)
         self._lists_stack.setCurrentWidget(self._list_editors[mode])
         self._keywords_title.setText("Blacklist" if mode == BLACKLIST else "Whitelist")
         self._mode_hint.setText(MODE_HINTS[mode])

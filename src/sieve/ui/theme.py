@@ -197,6 +197,9 @@ QTabBar::tab:hover {{
 }}
 
 /* Tables and lists */
+QListWidget#FileList::item {{
+    padding: 4px 6px;
+}}
 QTableWidget, QListWidget#FileList {{
     background: {BACKGROUND};
     border: 1px solid {BORDER};
@@ -266,13 +269,16 @@ QPushButton[segment] {{
     padding: 6px 16px;
     border-radius: 0;
 }}
-QPushButton[segment="blacklist"] {{
+QPushButton[segment="left"] {{
     border-top-left-radius: 6px;
     border-bottom-left-radius: 6px;
 }}
-QPushButton[segment="whitelist"] {{
+QPushButton[segment="right"] {{
     border-top-right-radius: 6px;
     border-bottom-right-radius: 6px;
+    border-left: none;
+}}
+QPushButton[segment="middle"] {{
     border-left: none;
 }}
 QPushButton[segment]:checked {{
