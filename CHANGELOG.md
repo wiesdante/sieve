@@ -6,6 +6,49 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-04
+
+### Changed
+
+- **Email junk filter rebuilt from scratch** with layered checks instead of keyword lists:
+  - Addresses must end in a real top-level domain (official IANA list), so file names such as
+    `logo@2x.png` are removed without any keyword.
+  - Categories that can each be switched off: reserved example domains, placeholder addresses
+    in English, Turkish and German, automated senders, disposable inboxes (community list of
+    10,000+ domains), service domains (Sentry, Wix, SES, Mailchimp…) and random-looking strings.
+  - Random-looking detection no longer depends on length, so long real names such as
+    `datenschutzbeauftragter@` are kept.
+  - Your own block and allow lists accept addresses, domains (with subdomains) and usernames.
+  - Optional **MX check** verifies that each domain exists and accepts email.
+  - The previous built-in keyword lists, which removed real addresses at domains containing
+    words like "media" or "image" and usernames like "privacy" or "webmaster", are gone.
+- **Email Scraper finds contact pages much more reliably**:
+  - Links are ranked by how likely they lead to contact or legal pages in English, Turkish and
+    German: Impressum, Kontakt, Datenschutz, İletişim, KVKK, Künye, Contact, Imprint…
+  - Reads addresses published as schema.org data and uses the site's sitemap to find contact
+    pages that are not linked from the first page.
+  - Visits pages in order of promise within a budget of 8 requests per site and stops early
+    once a contact page has given an address.
+  - Guesses common paths in the site's language (`/impressum`, `/kontakt`, `/iletisim`, `/kvkk`…)
+    only as a last resort.
+  - Subdomains such as `destek.firma.com.tr` count as the same site.
+  - Tries the `www.` / bare domain variant when a site cannot be reached.
+  - New statuses: **Form only** (no address, just a contact form), **Parked** (parked or
+    for-sale domain) and **Blocked** (bot protection or captcha). Blocked sites are included
+    in **Retry failed**.
+  - Email details show how each address was found, including site data and the page source.
+
+### Added
+
+- **Send to**: pass any tool's result straight into another tool's input.
+- Keyword Filter and Text Stripper: **several saved lists** per tool (new, rename, duplicate,
+  delete), kept across updates. Existing lists become the "Default" list.
+- Keyword Filter and Text Stripper: **Regex** option.
+- Duplicate Remover: **Compare as URLs** treats http/https, `www.` and a trailing slash as the same.
+- The taskbar button flashes when a long scan or extraction finishes in the background.
+- `(at)`/`[at]` and `(dot)`/`(punkt)`/`(nokta)` obfuscation is decoded in German and Turkish too.
+- Reference lists (top-level domains, disposable inboxes) are refreshed automatically every month.
+
 ## [0.8.0] - 2026-11-04
 
 ### Added
@@ -156,7 +199,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/wiesdante/sieve/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/wiesdante/sieve/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/wiesdante/sieve/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/wiesdante/sieve/compare/v0.5.0...v0.6.0

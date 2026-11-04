@@ -32,6 +32,8 @@ and every tool shares the same settings, proxy pool and logging.
 
 ## Features
 
+- **Tools work together** — every result can be sent to another tool with **Send to**, e.g. links
+  found in PDFs straight into Email Scraper.
 - **One app, many tools** — every scraping workflow gets its own page in the sidebar.
 - **Shared proxy pool** — configure proxies once (HTTP, HTTPS, SOCKS4/5, with or
   without credentials), test them from the app, and let tools rotate through them.

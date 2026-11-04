@@ -51,4 +51,8 @@ the list is the order in the sidebar.
   Save it as the user edits and implement `save_state()` on the page; the main window
   calls it when the app closes.
 - **Secrets** (API keys, logins) go into `context.credentials`, never into settings.
+- **Accept text from other tools** by implementing `receive_text(text)` on the page, and offer
+  your result to them with `sieve.ui.routing.SendToButton` in the output footer.
+- **Declare dependencies** by overriding `Tool.self_check()` (e.g. import the libraries the tool
+  needs); release builds run it and fail if something is missing.
 - Add tests under `tests/` and an entry under `[Unreleased]` in `CHANGELOG.md`.
