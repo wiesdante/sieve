@@ -42,6 +42,8 @@ class PresetBar(QWidget):
         self._menu_button = QPushButton("⋯")
         self._menu_button.setProperty("compact", True)
         self._menu_button.setFixedWidth(34)
+        # The "⋯" already says "menu"; the default arrow would hide it in a narrow button.
+        self._menu_button.setStyleSheet("QPushButton::menu-indicator { image: none; width: 0px; }")
         self._menu_button.setToolTip(f"New, rename, duplicate or delete {noun}s")
         menu = QMenu(self)
         menu.addAction(f"New {noun}...", self._new)
