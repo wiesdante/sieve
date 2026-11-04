@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+from sieve.core.email_filter import EmailFilter, prepare_text
+
 LINK = "link"
 TEXT = "text"
 
@@ -112,6 +114,8 @@ class ExtractResult:
     pages: int = 0
     #: (file name, error message) for files that could not be read.
     errors: list[tuple[str, str]] = field(default_factory=list)
+    #: (email, reason) for addresses removed by the junk filter, first occurrence only.
+    rejected: list[tuple[str, str]] = field(default_factory=list)
 
     @property
     def lines(self) -> list[str]:
@@ -162,7 +166,7 @@ def _strip_email(email: str) -> str:
 def find_emails(text: str) -> list[str]:
     """Email addresses written in ``text``, in order (duplicates kept)."""
     emails = []
-    for match in _EMAIL.finditer(text):
+    for match in _EMAIL.finditer(prepare_text(text)):
         tld = match.group("tld")
         if tld.lower() in _FILE_EXTENSIONS:  # e.g. "logo@2x.png"
             continue
@@ -211,10 +215,15 @@ def find_urls(text: str, include_bare_domains: bool = True) -> list[str]:
 class LinkCollector:
     """Accumulates links or emails in first-seen order, skipping duplicates."""
 
-    def __init__(self, options: ExtractOptions | None = None) -> None:
+    def __init__(
+        self, options: ExtractOptions | None = None, email_filter: EmailFilter | None = None
+    ) -> None:
         self._options = options or ExtractOptions()
+        self._filter = email_filter if self._options.mode == EMAILS else None
         self._seen: set[str] = set()
+        self._rejected_seen: set[str] = set()
         self.links: list[Found] = []
+        self.rejected: list[tuple[str, str]] = []
         self.total_found = 0
 
     def _key_and_value(self, value: str) -> tuple[str, str]:
@@ -230,6 +239,16 @@ class LinkCollector:
 
     def add(self, value: str, source: str, page: int | None, kind: str) -> None:
         self.total_found += 1
+        if self._filter is not None:
+            verdict = self._filter.judge(value)
+            if verdict is None:
+                return
+            if not verdict.ok:
+                if verdict.email not in self._rejected_seen:
+                    self._rejected_seen.add(verdict.email)
+                    self.rejected.append((verdict.email, verdict.reason or ""))
+                return
+            value = verdict.email
         key, shown = self._key_and_value(value)
         if not key or key in self._seen:
             return
@@ -263,10 +282,12 @@ class LinkCollector:
 
 
 # ------------------------------------------------------------------- sources
-def extract_from_text(text: str, options: ExtractOptions | None = None) -> ExtractResult:
-    collector = LinkCollector(options)
+def extract_from_text(
+    text: str, options: ExtractOptions | None = None, email_filter: EmailFilter | None = None
+) -> ExtractResult:
+    collector = LinkCollector(options, email_filter)
     collector.add_page([], text, "Text", None)
-    return ExtractResult(collector.links, collector.total_found)
+    return ExtractResult(collector.links, collector.total_found, rejected=collector.rejected)
 
 
 def _pdf_module():
@@ -290,9 +311,10 @@ def extract_from_pdfs(
     options: ExtractOptions | None = None,
     progress: Callable[[int, int], None] | None = None,
     cancelled: Callable[[], bool] | None = None,
+    email_filter: EmailFilter | None = None,
 ) -> ExtractResult:
     pymupdf = _pdf_module()
-    collector = LinkCollector(options)
+    collector = LinkCollector(options, email_filter)
     errors: list[tuple[str, str]] = []
     documents = []
 
@@ -333,5 +355,6 @@ def extract_from_pdfs(
     if progress:
         progress(total_pages, total_pages)
     return ExtractResult(
-        collector.links, collector.total_found, len(documents), total_pages, errors
+        collector.links, collector.total_found, len(documents), total_pages, errors,
+        collector.rejected,
     )

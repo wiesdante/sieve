@@ -143,3 +143,20 @@ def test_link_cut_off_at_line_end_is_replaced_by_clickable_link():
     text = "Read https://example.com/very/long\n/address?q=1 now"
     collector.add_page(["https://example.com/very/long/address?q=1"], text, "a.pdf", 1)
     assert [item.value for item in collector.links] == ["https://example.com/very/long/address?q=1"]
+
+
+# ------------------------------------------------------------ junk filter
+def test_email_mode_with_junk_filter():
+    from sieve.core.email_filter import EmailFilter
+
+    text = "Info@Acme.com, noreply@acme.com, x@o1.ingest.sentry.io, info%40shop.io, noreply@acme.com"
+    result = extract_from_text(text, ExtractOptions(mode=EMAILS), EmailFilter())
+    assert result.lines == ["info@acme.com", "info@shop.io"]
+    assert [email for email, _ in result.rejected] == ["noreply@acme.com", "x@o1.ingest.sentry.io"]
+
+
+def test_filter_is_ignored_in_links_mode():
+    from sieve.core.email_filter import EmailFilter
+
+    result = extract_from_text("https://example.com", ExtractOptions(), EmailFilter())
+    assert result.lines == ["https://example.com"]
