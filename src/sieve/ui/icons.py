@@ -95,6 +95,19 @@ def _collapse(p: QPainter) -> None:
     p.drawPath(path)
 
 
+def _eraser(p: QPainter) -> None:
+    body = QPainterPath()
+    body.moveTo(13.5, 4.5)
+    body.lineTo(20, 11)
+    body.lineTo(11.5, 19.5)
+    body.lineTo(7.5, 19.5)
+    body.lineTo(4, 16)
+    body.closeSubpath()
+    p.drawPath(body)
+    p.drawLine(QPointF(8.5, 9.5), QPointF(15, 16))
+    p.drawLine(QPointF(11.5, 19.5), QPointF(20, 19.5))
+
+
 def _tool(p: QPainter) -> None:
     for x, y in ((4, 4), (13, 4), (4, 13), (13, 13)):
         p.drawRoundedRect(QRectF(x, y, 7, 7), 1.5, 1.5)
@@ -108,6 +121,7 @@ ICONS: dict[str, Painter] = {
     "info": _info,
     "menu": _menu,
     "collapse": _collapse,
+    "eraser": _eraser,
     "tool": _tool,
 }
 
