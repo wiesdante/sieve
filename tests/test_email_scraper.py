@@ -69,8 +69,9 @@ def test_parse_page_finds_every_kind_of_address():
     parsed = parse_page(html, "https://acme.com/")
     found = {raw.lower() for raw, _ in parsed.candidates}
     assert {"sales@acme.com", "support@acme.com", "hidden@acme.com", "cf2@acme.com"} <= found
-    assert parsed.contact_links[:2] == ["https://acme.com/iletisim", "https://acme.com/about-us"]
-    assert "https://other.com/contact" not in parsed.contact_links
+    urls = [url for _, url in parsed.links]
+    assert urls[:2] == ["https://acme.com/iletisim", "https://acme.com/about-us"]
+    assert "https://other.com/contact" not in urls
     assert parsed.scripts == ["https://acme.com/js/contact-form.js"]
 
 
@@ -118,11 +119,15 @@ def test_https_failure_falls_back_to_http():
 
 
 def test_unreachable_site_is_failed():
-    fetcher = FakeFetcher({}, fail={"https://gone.com": "Domain not found"})
+    fetcher = FakeFetcher({}, fail={
+        "https://gone.com": "Domain not found",
+        "http://gone.com": "Domain not found",
+        "https://www.gone.com": "Domain not found",
+    })
     result = scan_site("https://gone.com", fetcher)
     assert result.status == FAILED
     assert result.error == "Domain not found"
-    assert fetcher.requested == ["https://gone.com"]
+    assert fetcher.requested == ["https://gone.com", "http://gone.com", "https://www.gone.com"]
 
 
 def test_guess_urls_include_language_folder():

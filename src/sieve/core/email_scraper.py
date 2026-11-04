@@ -2,22 +2,25 @@
 
 For every site the scraper:
 
-1. downloads the page that was given (falling back from https to http when the
-   secure connection fails),
-2. collects addresses from the raw HTML, the visible text, ``mailto:`` links,
-   Cloudflare-protected addresses and a couple of the site's own scripts,
-3. in **standard** mode, also visits the two pages that look most like a
-   contact page, and if nothing was found yet, tries common paths such as
-   ``/contact`` and ``/iletisim``.
+1. opens the page that was given (falling back from https to http, and between
+   ``www.`` and the bare domain, when the first attempt cannot connect),
+2. recognises parked domains and bot-protection pages and stops there,
+3. collects addresses from schema.org data, ``mailto:`` links, Cloudflare-protected
+   addresses, the visible text, the page source and a couple of the site's own scripts,
+4. in **standard** mode, keeps visiting the most promising pages within a small
+   budget: links ranked by how likely they lead to contact or legal pages in the
+   site's language (English, Turkish, German), pages from the sitemap, and finally
+   common paths such as ``/kontakt``, ``/impressum`` or ``/iletisim``.
 
 **Direct** mode only scans the exact URL that was given.
 
-Downloading is done through a ``Fetcher`` so the logic can be tested without
-a network and so every site can use its own proxy.
+Downloading goes through a ``Fetcher`` so the logic can be tested without a
+network and so every site can use its own proxy.
 """
 
 from __future__ import annotations
 
+import heapq
 import re
 import threading
 import time
@@ -29,6 +32,20 @@ from urllib.parse import unquote, urljoin, urlsplit
 
 from sieve.core.email_filter import EmailFilter, normalize_email, prepare_text
 from sieve.core.link_extractor import find_emails
+from sieve.core.site_discovery import (
+    LANGUAGES,
+    detect_languages,
+    guess_urls,
+    has_contact_form,
+    is_blocked,
+    is_parked,
+    parse_sitemap,
+    same_site,
+    score_link,
+    sitemaps_from_robots,
+    structured_emails,
+    toggle_www,
+)
 
 STANDARD = "standard"
 DIRECT = "direct"
@@ -37,35 +54,22 @@ MODES = (STANDARD, DIRECT)
 FOUND = "found"
 EMPTY = "empty"
 FAILED = "failed"
+FORM_ONLY = "form_only"
+PARKED = "parked"
+BLOCKED = "blocked"
+STATUSES = (FOUND, FORM_ONLY, EMPTY, PARKED, BLOCKED, FAILED)
 
 MAX_BYTES = 5 * 1024 * 1024
 SITE_TIME_LIMIT = 90.0
-MAX_CONTACT_PAGES = 2
+PAGE_BUDGET = 8
 MAX_SCRIPTS = 2
+#: A page this likely to hold contact details ends the search once it yields an address.
+STRONG_PAGE = 90
+#: Below this, a page is only visited while nothing has been found yet.
+WEAK_PAGE = 30
 
-COMMON_PATHS = (
-    "/iletisim",
-    "/contact",
-    "/contact-us",
-    "/bize-ulasin",
-    "/about",
-    "/hakkimizda",
-)
-_EXACT_CONTACT_TEXTS = {
-    "contact", "contact us", "iletisim", "iletişim", "bize ulaşın", "bize ulasin",
-    "iletisim bilgileri", "iletişim bilgileri", "kontakt",
-}
-_CONTACT_ENDINGS = (
-    "contact", "contact-us", "iletisim", "iletişim", "bize-ulasin", "iletisim.html",
-    "contact.html", "kontakt",
-)
-_CONTACT_WORD = re.compile(r"\b(contact(?:[- ]us)?|iletisim|iletişim|bize[- ]ula[sş][ıi]n|kontakt)\b")
-_SECONDARY_WORD = re.compile(r"\b(about(?:[- ]us)?|hakk[ıi]m[ıi]zda|support|impressum|künye)\b")
-_NEGATIVE_WORD = re.compile(
-    r"\b(product|products|urun|kategori|category|item|detail|blog|article|news|haber|connector|termini)\b"
-)
-_SCRIPT_HINTS = ("contact", "email", "app", "main", "config")
-_CONNECTION_ERRORS = ("connect", "ssl", "timed out", "timeout", "max retries")
+_SCRIPT_HINTS = ("contact", "email", "mail", "kontakt", "iletisim", "config", "app", "main")
+_CONNECTION_ERRORS = ("connect", "ssl", "timed out", "timeout", "max retries", "domain not found")
 
 
 class ScrapeCancelledError(Exception):
@@ -95,7 +99,8 @@ class FoundEmail:
     email: str
     #: The page the address was first seen on.
     page: str
-    #: How it was found: "text", "link" (mailto), "protected" (Cloudflare) or "script".
+    #: How it was found: "structured", "link" (mailto), "protected" (Cloudflare),
+    #: "text", "source" or "script".
     how: str
 
 
@@ -109,6 +114,9 @@ class SiteResult:
     pages: int = 0
     error: str = ""
     elapsed: float = 0.0
+    language: str = ""
+    #: A page with a contact form that was seen (useful when no address exists).
+    contact_form: str = ""
     log: list[str] = field(default_factory=list)
 
 
@@ -117,6 +125,7 @@ class ScrapeOptions:
     mode: str = STANDARD
     workers: int = 10
     site_time_limit: float = SITE_TIME_LIMIT
+    page_budget: int = PAGE_BUDGET
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -124,12 +133,6 @@ class ScrapeOptions:
 
 
 # --------------------------------------------------------------- page parsing
-def _same_site(a: str, b: str) -> bool:
-    host_a = (urlsplit(a).hostname or "").lower().removeprefix("www.")
-    host_b = (urlsplit(b).hostname or "").lower().removeprefix("www.")
-    return bool(host_a) and host_a == host_b
-
-
 def decode_cloudflare(encoded: str) -> str | None:
     """Decode a Cloudflare "email protection" hex string."""
     try:
@@ -141,33 +144,38 @@ def decode_cloudflare(encoded: str) -> str | None:
 
 @dataclass
 class ParsedPage:
-    #: (raw candidate, how) pairs in the order found.
+    #: (raw candidate, how) pairs, most trustworthy sources first.
     candidates: list[tuple[str, str]]
-    #: Links that look like contact pages, best first.
-    contact_links: list[str]
+    #: Same-site links with a contact score, best first.
+    links: list[tuple[int, str]]
     #: Same-site scripts that may contain addresses.
     scripts: list[str]
+    languages: tuple[str, ...] = ("en",)
+    visible_text: str = ""
+    contact_form: bool = False
 
 
-def parse_page(html: str, page_url: str) -> ParsedPage:
+def parse_page(html: str, page_url: str, languages: tuple[str, ...] | None = None) -> ParsedPage:
     from bs4 import BeautifulSoup
 
-    candidates: list[tuple[str, str]] = [(email, "text") for email in find_emails(html)]
-    contact_scored: list[tuple[int, int, str]] = []
-    scripts: list[str] = []
     if len(html) > MAX_BYTES:
-        return ParsedPage(candidates, [], [])
+        return ParsedPage([(email, "source") for email in find_emails(html)], [], [])
 
     soup = BeautifulSoup(html, "html.parser")
-    for email in find_emails(soup.get_text(" ")):
-        candidates.append((email, "text"))
+    visible = soup.get_text(" ")
+    if languages is None:
+        html_tag = soup.find("html")
+        languages = detect_languages(html_tag.get("lang") if html_tag else None, page_url, visible)
 
+    candidates: list[tuple[str, str]] = [(email, "structured") for email in structured_emails(soup)]
     for tag in soup.find_all(attrs={"data-cfemail": True}):
         decoded = decode_cloudflare(str(tag.get("data-cfemail", "")))
         if decoded:
             candidates.append((decoded, "protected"))
 
-    for order, anchor in enumerate(soup.find_all("a", href=True)):
+    scored: dict[str, int] = {}
+    order: list[str] = []
+    for anchor in soup.find_all("a", href=True):
         href = str(anchor["href"]).strip()
         lower = href.lower()
         if lower.startswith("mailto:"):
@@ -179,62 +187,35 @@ def parse_page(html: str, page_url: str) -> ParsedPage:
             if decoded:
                 candidates.append((decoded, "protected"))
             continue
-        score = _contact_score(lower, anchor.get_text(" ", strip=True).lower())
-        if score > 0:
-            target = urljoin(page_url, href).split("#", 1)[0]
-            if _same_site(target, page_url):
-                contact_scored.append((-score, order, target))
+        if lower.startswith(("tel:", "javascript:", "#", "whatsapp:", "sms:")):
+            continue
+        text = anchor.get_text(" ", strip=True) or str(anchor.get("title", "")) or str(anchor.get("aria-label", ""))
+        # Links are ranked with every supported language: many sites mix them.
+        score = score_link(href, text, LANGUAGES)
+        if score <= 0:
+            continue
+        target = urljoin(page_url, href).split("#", 1)[0]
+        if not target.lower().startswith(("http://", "https://")) or not same_site(target, page_url):
+            continue
+        if target.rstrip("/") == page_url.rstrip("/"):
+            continue
+        if target not in scored:
+            order.append(target)
+        scored[target] = max(score, scored.get(target, 0))
 
-    contact_links: list[str] = []
-    for _, _, target in sorted(contact_scored):
-        if target not in contact_links and target.rstrip("/") != page_url.rstrip("/"):
-            contact_links.append(target)
+    candidates += [(email, "text") for email in find_emails(visible)]
+    candidates += [(email, "source") for email in find_emails(html)]
 
+    scripts: list[str] = []
     for script in soup.find_all("script", src=True):
         src = str(script["src"])
         target = urljoin(page_url, src)
         wanted = any(hint in src.lower() for hint in _SCRIPT_HINTS)
-        if wanted and _same_site(target, page_url) and target not in scripts:
+        if wanted and same_site(target, page_url) and target not in scripts:
             scripts.append(target)
 
-    return ParsedPage(candidates, contact_links, scripts)
-
-
-def _contact_score(href: str, text: str) -> int:
-    score = 0
-    if text in _EXACT_CONTACT_TEXTS:
-        score += 50
-    path = href.split("?", 1)[0].strip("/")
-    if path.endswith(_CONTACT_ENDINGS):
-        score += 50
-    if _CONTACT_WORD.search(href):
-        score += 10
-    if _CONTACT_WORD.search(text):
-        score += 10
-    if _SECONDARY_WORD.search(href):
-        score += 5
-    if _SECONDARY_WORD.search(text):
-        score += 5
-    if _NEGATIVE_WORD.search(href):
-        score -= 30
-    return score
-
-
-def guess_urls(final_url: str) -> list[str]:
-    """Common contact paths at the site root and, if the site redirected into a
-    sub-folder such as /tr/, inside that folder too."""
-    parts = urlsplit(final_url)
-    root = f"{parts.scheme}://{parts.netloc}"
-    folder = final_url if final_url.endswith("/") else final_url.rsplit("/", 1)[0] + "/"
-    urls: list[str] = []
-    for path in COMMON_PATHS:
-        candidates = [urljoin(root, path)]
-        if parts.path.strip("/"):
-            candidates.append(urljoin(folder, path.lstrip("/")))
-        for url in candidates:
-            if url not in urls:
-                urls.append(url)
-    return urls
+    links = sorted(((scored[url], url) for url in order), key=lambda item: -item[0])
+    return ParsedPage(candidates, links, scripts, languages, visible, has_contact_form(soup))
 
 
 def normalize_site(line: str) -> str | None:
@@ -283,7 +264,11 @@ class _SiteScan:
         self._started = time.monotonic()
         self._seen: set[str] = set()
         self._rejected_seen: set[str] = set()
+        self._visited: set[str] = set()
+        self._queue: list[tuple[int, int, str, str]] = []
+        self._counter = 0
 
+    # -- helpers
     def log(self, level: str, message: str) -> None:
         self.result.log.append(f"[{time.strftime('%H:%M:%S')}] {level:<7} {message}")
 
@@ -292,11 +277,15 @@ class _SiteScan:
             return True
         return time.monotonic() - self._started > self._options.site_time_limit
 
+    def _budget_left(self) -> bool:
+        return self.result.pages < self._options.page_budget
+
     def _fetch(self, url: str, quick: bool = False) -> FetchResult:
         self.result.pages += 1
+        self._visited.add(url.rstrip("/"))
         return self._fetcher.fetch(url, quick=quick)
 
-    def _collect(self, candidates: list[tuple[str, str]], page: str, source: str) -> int:
+    def _collect(self, candidates: list[tuple[str, str]], page: str) -> int:
         added = 0
         for raw, how in candidates:
             if self._filter is not None:
@@ -316,36 +305,44 @@ class _SiteScan:
             if email not in self._seen:
                 self._seen.add(email)
                 self.result.emails.append(FoundEmail(email, page, how))
-                self.log("FOUND", f"{email} ({source})")
+                self.log("FOUND", f"{email} ({how})")
                 added += 1
         return added
 
-    def _scan(self, url: str, source: str, quick: bool = False) -> tuple[FetchResult, ParsedPage | None]:
-        page = self._fetch(url, quick=quick)
-        if not page.ok:
-            return page, None
-        parsed = parse_page(page.text or "", page.url)
-        self._collect(parsed.candidates, page.url, source)
+    def _enqueue(self, url: str, score: int, why: str) -> None:
+        if url.rstrip("/") in self._visited:
+            return
+        self._counter += 1
+        heapq.heappush(self._queue, (-score, self._counter, url, why))
+
+    def _scan_scripts(self, parsed: ParsedPage, page_url: str) -> None:
         for script_url in parsed.scripts[:MAX_SCRIPTS]:
-            if self._out_of_time():
-                break
+            if self._out_of_time() or not self._budget_left():
+                return
             script = self._fetch(script_url, quick=True)
             if script.ok:
-                self._collect(
-                    [(email, "script") for email in find_emails(prepare_text(script.text or ""))],
-                    page.url,
-                    "script",
-                )
-        return page, parsed
+                found = find_emails(prepare_text(script.text or ""))
+                self._collect([(email, "script") for email in found], page_url)
+
+    # -- main flow
+    def _open_first_page(self) -> tuple[FetchResult, str]:
+        site = self.result.site
+        attempts = [site]
+        if site.lower().startswith("https://"):
+            attempts.append("http://" + site[8:])
+        attempts.append(toggle_www(site))
+        last = FetchResult(site, error="No response")
+        for index, url in enumerate(attempts):
+            if index:
+                self.log("WARN", f"{last.error}; trying {url}")
+            last = self._fetch(url)
+            if last.ok or not _is_connection_error(last.error):
+                return last, url
+        return last, attempts[-1]
 
     def run(self) -> SiteResult:
-        site = self.result.site
-        self.log("INFO", f"Scanning {site}")
-        home, parsed = self._scan(site, "first page")
-        if not home.ok and site.lower().startswith("https://") and _is_connection_error(home.error):
-            self.log("WARN", f"HTTPS failed ({home.error}), trying HTTP")
-            home, parsed = self._scan("http://" + site[8:], "first page")
-
+        self.log("INFO", f"Scanning {self.result.site}")
+        home, _ = self._open_first_page()
         if not home.ok:
             self.result.status = FAILED
             self.result.error = home.error or "No response"
@@ -353,45 +350,131 @@ class _SiteScan:
             return self._finish()
 
         self.result.final_url = home.url
-        self.log("OK", f"Connected: {home.url}")
-        if not self.result.emails:
-            self.log("INFO", "No emails on the first page")
+        html = home.text or ""
+        if is_blocked(home.status, html) or home.status == 403:
+            self.result.status = BLOCKED
+            self.result.error = (
+                "Access denied (HTTP 403)" if home.status == 403 and not is_blocked(home.status, html)
+                else f"Bot protection or captcha (HTTP {home.status})"
+            )
+            self.log("WARN", self.result.error)
+            return self._finish()
+        if home.status >= 400:
+            self.result.status = FAILED
+            self.result.error = f"The site answered HTTP {home.status}"
+            self.log("ERROR", self.result.error)
+            return self._finish()
 
-        if self._options.mode == STANDARD and parsed is not None:
-            for link in parsed.contact_links[:MAX_CONTACT_PAGES]:
-                if self._out_of_time():
-                    break
-                self.log("INFO", f"Contact page: {link}")
-                page, _ = self._scan(link, "contact page")
-                if not page.ok:
-                    self.log("WARN", f"Could not open {link} ({page.error})")
+        parsed = parse_page(html, home.url)
+        self.result.language = parsed.languages[0]
+        self.log("OK", f"Connected: {home.url} (HTTP {home.status}, language: {self.result.language})")
+        if is_parked(home.url, parsed.visible_text):
+            self.result.status = PARKED
+            self.result.error = "Parked or for-sale domain"
+            self.log("WARN", self.result.error)
+            return self._finish()
 
-            if not self.result.emails:
-                self._guess(home.url)
+        self._collect(parsed.candidates, home.url)
+        if parsed.contact_form:
+            self.result.contact_form = home.url
+        self._scan_scripts(parsed, home.url)
 
-        self.result.status = FOUND if self.result.emails else EMPTY
+        if self._options.mode == STANDARD:
+            for score, url in parsed.links:
+                self._enqueue(url, score, "link")
+            self._crawl(home.url, parsed.languages)
+
+        self._decide_status()
         return self._finish()
 
-    def _guess(self, final_url: str) -> None:
-        self.log("INFO", "Trying common contact paths")
-        home_key = final_url.rstrip("/")
-        for url in guess_urls(final_url):
-            if self._out_of_time():
-                self.log("WARN", "Time limit reached")
-                return
-            page = self._fetch(url, quick=True)
-            # Many sites answer unknown paths by redirecting to the home page.
-            if not page.ok or page.status != 200 or page.url.rstrip("/") == home_key:
+    def _crawl(self, home_url: str, languages: tuple[str, ...]) -> None:
+        sitemap_checked = False
+        guessed = False
+        while not self._out_of_time() and self._budget_left():
+            best = -self._queue[0][0] if self._queue else 0
+            if self.result.emails and best < STRONG_PAGE:
+                return  # found addresses and nothing clearly better is left
+            if not self.result.emails and best < STRONG_PAGE and not sitemap_checked:
+                sitemap_checked = True
+                self._read_sitemap(home_url, languages)
                 continue
-            self.log("INFO", f"Found page: {page.url}")
-            parsed = parse_page(page.text or "", page.url)
-            if self._collect(parsed.candidates, page.url, "guessed page"):
+            if not self._queue:
+                if self.result.emails or guessed:
+                    return
+                guessed = True
+                for url in guess_urls(home_url, languages):
+                    self._enqueue(url, WEAK_PAGE, "guess")
+                continue
+            neg_score, _, url, why = heapq.heappop(self._queue)
+            score = -neg_score
+            if url.rstrip("/") in self._visited or (self.result.emails and score < STRONG_PAGE):
+                continue
+            if self._visit(url, score, why, home_url, languages) and score >= STRONG_PAGE:
                 return
-        self.log("INFO", "No emails found on common paths")
+
+    def _visit(self, url: str, score: int, why: str, home_url: str, languages: tuple[str, ...]) -> bool:
+        page = self._fetch(url, quick=why == "guess")
+        if not page.ok:
+            if why != "guess":
+                self.log("WARN", f"Could not open {url} ({page.error})")
+            return False
+        # Unknown paths often answer 404 or redirect to the home page.
+        if page.status >= 400 or page.url.rstrip("/") == home_url.rstrip("/"):
+            return False
+        self.log("INFO", f"Visited {page.url} ({why}, score {score})")
+        parsed = parse_page(page.text or "", page.url, languages)
+        added = self._collect(parsed.candidates, page.url)
+        if parsed.contact_form and not self.result.contact_form:
+            self.result.contact_form = page.url
+        for link_score, link in parsed.links[:10]:
+            if link_score >= WEAK_PAGE:
+                self._enqueue(link, link_score, "link")
+        return added > 0
+
+    def _read_sitemap(self, home_url: str, languages: tuple[str, ...]) -> None:
+        parts = urlsplit(home_url)
+        root = f"{parts.scheme}://{parts.netloc}"
+        robots = self._fetch(urljoin(root, "/robots.txt"), quick=True)
+        sitemaps = sitemaps_from_robots(robots.text or "") if robots.ok and robots.status < 400 else []
+        if not sitemaps:
+            sitemaps = [urljoin(root, "/sitemap.xml")]
+        pages: list[str] = []
+        for sitemap_url in sitemaps[:2]:
+            if not self._budget_left() or self._out_of_time():
+                break
+            sitemap = self._fetch(sitemap_url, quick=True)
+            if not sitemap.ok or sitemap.status >= 400:
+                continue
+            found, children = parse_sitemap(sitemap.text or "")
+            pages += found
+            for child in children[:1]:
+                if self._budget_left():
+                    child_map = self._fetch(child, quick=True)
+                    if child_map.ok and child_map.status < 400:
+                        pages += parse_sitemap(child_map.text or "")[0]
+        added = 0
+        for url in pages[:5000]:
+            if not same_site(url, home_url):
+                continue
+            score = score_link(url, "", LANGUAGES)
+            if score >= 40:
+                self._enqueue(url, score, "sitemap")
+                added += 1
+        self.log("INFO", f"Sitemap: {len(pages)} pages, {added} look like contact pages")
+
+    def _decide_status(self) -> None:
+        if self.result.emails:
+            self.result.status = FOUND
+        elif self.result.contact_form:
+            self.result.status = FORM_ONLY
+            self.result.error = f"Only a contact form ({self.result.contact_form})"
+        else:
+            self.result.status = EMPTY
 
     def _finish(self) -> SiteResult:
         self.result.elapsed = time.monotonic() - self._started
-        self.log("DONE", f"{len(self.result.emails)} emails in {self.result.elapsed:.1f}s")
+        self.log("DONE", f"{len(self.result.emails)} emails, {self.result.pages} requests, "
+                         f"{self.result.elapsed:.1f}s")
         return self.result
 
 
