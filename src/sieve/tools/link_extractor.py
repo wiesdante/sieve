@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from sieve.context import AppContext
+from sieve.core.email_filter import EmailFilter
 from sieve.core.link_extractor import (
     EMAILS,
     LINK,
@@ -47,6 +48,7 @@ from sieve.core.link_extractor import (
 )
 from sieve.tools.base import Tool
 from sieve.ui import theme
+from sieve.ui.email_rules import EmailRulesDialog, load_filter
 from sieve.ui.tasks import BackgroundTask, run_in_background
 from sieve.ui.widgets import (
     FileDropList,
@@ -84,11 +86,18 @@ class LinkExtractorTool(Tool):
 
 
 def run_job(
-    files: list[Path], text: str | None, options: ExtractOptions, progress=None, cancelled=None
+    files: list[Path],
+    text: str | None,
+    options: ExtractOptions,
+    email_filter: EmailFilter | None = None,
+    progress=None,
+    cancelled=None,
 ) -> ExtractResult:
     if files:
-        return extract_from_pdfs(files, options, progress=progress, cancelled=cancelled)
-    return extract_from_text(text or "", options)
+        return extract_from_pdfs(
+            files, options, progress=progress, cancelled=cancelled, email_filter=email_filter
+        )
+    return extract_from_text(text or "", options, email_filter)
 
 
 def _editor(placeholder: str, read_only: bool = False) -> QPlainTextEdit:
@@ -160,10 +169,19 @@ class LinkExtractorPage(ToolPage):
         )
         self._domains_only = QCheckBox("Domains only")
         self._domains_only.setChecked(bool(self._prefs.get("domains_only", defaults.domains_only)))
-        for box in (self._bare_domains, self._domains_only):
+        self._filter_junk = QCheckBox("Filter junk")
+        self._filter_junk.setToolTip(
+            "Emails mode: remove placeholders, no-reply, disposable, tracking and image-name\n"
+            "addresses. Removed addresses are listed under Rejected."
+        )
+        self._filter_junk.setChecked(bool(self._prefs.get("filter_junk", True)))
+        for box in (self._bare_domains, self._domains_only, self._filter_junk):
             box.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             box.toggled.connect(self._save_options)
             row.addWidget(box)
+        self._rules_button = compact_button("Rules...", "Edit which addresses count as junk.")
+        self._rules_button.clicked.connect(lambda: EmailRulesDialog(self).exec())
+        row.addWidget(self._rules_button)
         row.addStretch(1)
         self._mode_hint = muted_label(wrap=False)
         row.addWidget(self._mode_hint)
@@ -174,7 +192,9 @@ class LinkExtractorPage(ToolPage):
             mode = LINKS
         self._mode = mode
         self._mode_control.set_current(mode)
-        self._bare_domains.setEnabled(mode == LINKS)
+        self._bare_domains.setVisible(mode == LINKS)
+        self._filter_junk.setVisible(mode == EMAILS)
+        self._rules_button.setVisible(mode == EMAILS)
         if mode == LINKS:
             self._domains_only.setToolTip('Output only the site of each link, e.g. "example.com".')
             self._mode_hint.setText("Duplicates are removed; http/https and www. count as the same.")
@@ -200,6 +220,7 @@ class LinkExtractorPage(ToolPage):
         self._prefs.update(
             include_bare_domains=self._bare_domains.isChecked(),
             domains_only=self._domains_only.isChecked(),
+            filter_junk=self._filter_junk.isChecked(),
         )
         self._context.save_settings()
 
@@ -334,6 +355,14 @@ class LinkExtractorPage(ToolPage):
         self._result_tabs.addTab(self._output, "Result")
         self._result_tabs.addTab(self._details, "Details")
         self._result_tabs.addTab(self._problems, "Problems")
+        self._rejected = QTableWidget(0, 2)
+        self._rejected.setHorizontalHeaderLabels(["Address", "Reason"])
+        self._rejected.verticalHeader().hide()
+        self._rejected.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._rejected.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self._rejected.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self._result_tabs.addTab(self._rejected, "Rejected")
+        self._result_tabs.setTabVisible(3, False)
         self._result_tabs.setTabToolTip(1, "Where each item was first found.")
         self._result_tabs.setTabVisible(2, False)
         body.addWidget(self._result_tabs, 1)
@@ -371,12 +400,16 @@ class LinkExtractorPage(ToolPage):
             self._text.setFocus()
             flash_button(self._run_button, "Paste some text first")
             return
+        email_filter = (
+            load_filter() if self._mode == EMAILS and self._filter_junk.isChecked() else None
+        )
         self._set_running(True)
         self._task = run_in_background(
             run_job,
             files,
             text,
             self._options(),
+            email_filter,
             on_success=self._on_done,
             on_error=self._on_error,
             on_progress=self._on_progress,
@@ -423,7 +456,9 @@ class LinkExtractorPage(ToolPage):
             self._stats.setText(stats_html([("Found", 0, None), ("Unique", 0, None)]))
             self._output.clear()
             self._details.setRowCount(0)
+            self._rejected.setRowCount(0)
             self._result_tabs.setTabVisible(2, False)
+            self._result_tabs.setTabVisible(3, False)
             return
 
         items = []
@@ -433,6 +468,8 @@ class LinkExtractorPage(ToolPage):
             ("Found", result.total_found, None),
             ("Unique", len(result.links), theme.SUCCESS if result.links else None),
         ]
+        if result.rejected:
+            items.append(("Rejected", len(result.rejected), theme.WARNING))
         if result.errors:
             items.append(("Problems", len(result.errors), theme.DANGER))
         self._stats.setText(stats_html(items))
@@ -454,6 +491,12 @@ class LinkExtractorPage(ToolPage):
         self._problems.setPlainText("\n".join(f"{name}: {message}" for name, message in result.errors))
         self._result_tabs.setTabVisible(2, bool(result.errors))
         self._result_tabs.setTabText(2, f"Problems ({len(result.errors)})")
+        self._rejected.setRowCount(len(result.rejected))
+        for row, (email, reason) in enumerate(result.rejected):
+            self._rejected.setItem(row, 0, QTableWidgetItem(email))
+            self._rejected.setItem(row, 1, QTableWidgetItem(reason))
+        self._result_tabs.setTabVisible(3, bool(result.rejected))
+        self._result_tabs.setTabText(3, f"Rejected ({len(result.rejected)})")
         self._result_tabs.setCurrentIndex(0)
 
     def _copy_output(self) -> None:

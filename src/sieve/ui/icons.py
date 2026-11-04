@@ -117,6 +117,15 @@ def _link(p: QPainter) -> None:
     p.restore()
 
 
+def _mail(p: QPainter) -> None:
+    p.drawRoundedRect(QRectF(3.5, 5.5, 17, 13), 2.5, 2.5)
+    path = QPainterPath()
+    path.moveTo(4.5, 7)
+    path.lineTo(12, 12.5)
+    path.lineTo(19.5, 7)
+    p.drawPath(path)
+
+
 def _tool(p: QPainter) -> None:
     for x, y in ((4, 4), (13, 4), (4, 13), (13, 13)):
         p.drawRoundedRect(QRectF(x, y, 7, 7), 1.5, 1.5)
@@ -132,6 +141,7 @@ ICONS: dict[str, Painter] = {
     "collapse": _collapse,
     "eraser": _eraser,
     "link": _link,
+    "mail": _mail,
     "tool": _tool,
 }
 
