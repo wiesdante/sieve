@@ -6,6 +6,19 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-04
+
+### Added
+
+- **Text Stripper** tool: remove saved phrases such as labels and prefixes from every line,
+  for example turning `Email: john@example.com` into `john@example.com`.
+  - The phrase list is saved automatically and survives restarts and updates.
+  - Spaces are shown in the phrase list, since a trailing space is part of a phrase.
+  - Phrases are matched literally and applied in one pass, longest first.
+  - Options: ignore case (with correct Turkish İ/i handling), trim lines, drop lines that
+    become empty.
+  - See how many times each phrase was removed, including phrases that never matched.
+
 ## [0.5.0] - 2026-11-02
 
 ### Added
@@ -91,7 +104,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/wiesdante/sieve/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/wiesdante/sieve/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/wiesdante/sieve/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/wiesdante/sieve/compare/v0.3.1...v0.4.0
