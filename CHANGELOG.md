@@ -6,6 +6,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-11-05
+
+### Removed
+
+- Website Finder's region setting: searches always cover all regions.
+
 ## [0.12.1] - 2026-11-05
 
 ### Fixed
@@ -373,7 +379,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/wiesdante/sieve/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/wiesdante/sieve/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/wiesdante/sieve/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/wiesdante/sieve/compare/v0.11.0...v0.11.1

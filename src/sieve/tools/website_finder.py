@@ -36,7 +36,6 @@ from sieve.core.website_finder import (
     NO_SITE,
     PROXY_COOLDOWN,
     RATE_LIMITED,
-    REGIONS,
     STATUSES,
     UNSURE,
     BrowserSearcher,
@@ -191,17 +190,6 @@ class WebsiteFinderPage(ToolPage):
         row.setContentsMargins(14, 8, 14, 8)
         row.setSpacing(14)
 
-        self._region = QComboBox()
-        for code, label in REGIONS:
-            self._region.addItem(f"Region: {label}", code)
-        index = self._region.findData(self._prefs.get("region", ""))
-        self._region.setCurrentIndex(max(index, 0))
-        self._region.setToolTip(
-            "DuckDuckGo's region setting. A company's own country can bring its site higher;\n"
-            "All regions works well for most lists."
-        )
-        self._region.currentIndexChanged.connect(self._save_options)
-
         rules = compact_button("Rules...", "Which sites never count as a company's website, and your block lists.")
         rules.clicked.connect(lambda: WebsiteRulesDialog(self._prefs, self._context.save_settings, self).exec())
 
@@ -220,7 +208,6 @@ class WebsiteFinderPage(ToolPage):
         )
         self._workers.currentIndexChanged.connect(self._save_options)
 
-        row.addWidget(self._region)
         for widget in (rules, self._use_proxies):
             widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             row.addWidget(widget)
@@ -260,7 +247,7 @@ class WebsiteFinderPage(ToolPage):
         super().showEvent(event)
 
     def _save_options(self) -> None:
-        self._prefs.update(region=self._region.currentData(), workers=self._workers.currentData())
+        self._prefs.update(workers=self._workers.currentData())
         if self._use_proxies.isEnabled():  # an unavailable list must not overwrite the choice
             self._prefs["use_proxies"] = self._use_proxies.isChecked()
         self._context.save_settings()
@@ -371,8 +358,7 @@ class WebsiteFinderPage(ToolPage):
     # ------------------------------------------------------------------- run
     def _settings(self) -> FinderSettings:
         settings = FinderSettings.from_dict(self._prefs.get("rules", {}))
-        region = self._region.currentData()
-        settings.region = region if region in dict(REGIONS) else ""
+        settings.region = ""  # all regions
         settings.block = parse_block_rules(load_block_lists().text)
         return settings
 
@@ -399,9 +385,8 @@ class WebsiteFinderPage(ToolPage):
         self._total = len(companies)
         self._started_at = time.monotonic()
         self._set_running(True)
-        region = dict(REGIONS)[settings.region]
         self._log.appendPlainText(
-            f"Started {time.strftime('%Y-%m-%d %H:%M:%S')} · {len(companies)} companies · {region}"
+            f"Started {time.strftime('%Y-%m-%d %H:%M:%S')} · {len(companies)} companies"
             + (f" · {len(pool)} proxies" if pool else " · no proxies")
             + (f" · {len(settings.block)} block rules" if settings.block else "")
         )
