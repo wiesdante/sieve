@@ -123,3 +123,11 @@ tests/                unit tests
 ## License
 
 Proprietary — all rights reserved. See [LICENSE](LICENSE).
+
+### Third-party material
+
+- [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) font, SIL Open Font License 1.1
+  ([assets/fonts/JetBrainsMono-OFL.txt](assets/fonts/JetBrainsMono-OFL.txt)).
+- Top-level domain list from [IANA](https://www.iana.org/domains/root/db) and disposable
+  email domains from [disposable-email-domains](https://github.com/disposable-email-domains/disposable-email-domains)
+  (CC0), refreshed monthly.

@@ -6,6 +6,20 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-05
+
+### Changed
+
+- **A new look: a terminal.** Black screen, phosphor green and one monospaced font
+  (JetBrains Mono, bundled) everywhere.
+  - Every page opens with a prompt (`root@sieve:~$ email_scraper`) and a blinking cursor.
+  - Panels are drawn with thin green lines, their titles set into the frame.
+  - Square buttons: primary ones in capitals with a soft glow, the rest in lower case.
+  - The sidebar lists tools as commands (`> email_scraper`); faint scanlines run over the
+    window like an old monitor.
+  - A new green icon.
+- Statistics lines wrap instead of being cut off on narrow windows.
+
 ## [0.12.2] - 2026-11-05
 
 ### Removed
@@ -379,7 +393,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.12.2...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/wiesdante/sieve/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/wiesdante/sieve/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/wiesdante/sieve/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/wiesdante/sieve/compare/v0.11.1...v0.12.0
