@@ -2,6 +2,7 @@
 
 import os
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -32,10 +33,18 @@ APP_PAGE = b"""<!doctype html><html lang="en"><head><title>App</title></head>
 </script></body></html>"""
 
 
+FROZEN_PAGE = b"""<!doctype html><html><body><p>Loading</p>
+<script>setTimeout(function () { while (true) {} }, 50);</script></body></html>"""
+WHO_PAGE = b"""<!doctype html><html><body><p id="who"></p>
+<script>document.getElementById("who").textContent =
+  navigator.userAgent + " webdriver=" + navigator.webdriver;</script></body></html>"""
+ROUTES = {"/": APP_PAGE, "/frozen": FROZEN_PAGE, "/who": WHO_PAGE}
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
-        body = APP_PAGE if self.path == "/" else b"missing"
-        self.send_response(200 if self.path == "/" else 404)
+        body = ROUTES.get(self.path, b"missing")
+        self.send_response(200 if self.path in ROUTES else 404)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -85,3 +94,27 @@ def test_default_browser_is_read_and_named(pool):
 
     default_browser()  # must not raise on Windows
     assert pool.name in ("Google Chrome", "Microsoft Edge", "Brave", "Vivaldi", "Chromium")
+
+
+def test_browser_does_not_announce_automation(server, pool):
+    result = BrowserFetcher(pool).fetch(server + "/who")
+    assert "HeadlessChrome" not in result.text
+    assert "webdriver=true" not in result.text
+
+
+def test_frozen_page_is_given_up_and_the_pool_keeps_working(server, monkeypatch):
+    from sieve.core import browser as browser_module
+
+    monkeypatch.setattr(browser_module, "PAGE_TIMEOUT", 8.0)
+    single = BrowserPool(size=1)
+    try:
+        started = time.monotonic()
+        frozen = BrowserFetcher(single).fetch(server + "/frozen")
+        assert time.monotonic() - started < 15
+        assert frozen.error == "Browser timed out"
+        after = BrowserFetcher(single).fetch(server + "/")
+        assert "hello@rendered.example.com" in after.text
+    finally:
+        started = time.monotonic()
+        single.close()
+        assert time.monotonic() - started < 7

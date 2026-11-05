@@ -112,6 +112,11 @@ def launch_order(default: BrowserChoice | None) -> list[BrowserChoice]:
             order.append(choice)
     return order
 _BLOCKED_RESOURCES = {"image", "media", "font"}
+#: Longest wait for one page; a page whose scripts freeze the browser is given up after this.
+PAGE_TIMEOUT = 60.0
+#: Extra browsers started to replace ones stuck on a frozen page.
+MAX_REPLACEMENTS = 4
+_LAUNCH_ARGS = ["--disable-blink-features=AutomationControlled"]
 _CHALLENGE_TITLES = ("just a moment", "attention required", "checking your browser", "please wait")
 
 
@@ -143,6 +148,8 @@ class BrowserPool:
         self._lock = threading.Lock()
         self._started = False
         self._closed = False
+        self._replacements = 0
+        self._user_agent: str | None = None
         self.error: str | None = None
         #: Name of the browser that was started, once one is running.
         self.name: str = "the browser"
@@ -153,20 +160,35 @@ class BrowserPool:
             if self._started:
                 return
             self._started = True
-            for index in range(self._size):
-                thread = threading.Thread(target=self._worker, name=f"browser-{index}", daemon=True)
-                thread.start()
-                self._threads.append(thread)
+            for _ in range(self._size):
+                self._add_worker()
 
-    def close(self) -> None:
+    def _add_worker(self) -> None:
+        thread = threading.Thread(target=self._worker, name=f"browser-{len(self._threads)}", daemon=True)
+        thread.start()
+        self._threads.append(thread)
+
+    def _replace_stuck_worker(self) -> None:
+        """A page froze its browser; start another one so the run keeps its pace."""
+        with self._lock:
+            if self._closed or self._replacements >= MAX_REPLACEMENTS:
+                return
+            self._replacements += 1
+            self._add_worker()
+
+    def close(self, wait: float = 5.0) -> None:
+        """Shut the browsers down, waiting at most ``wait`` seconds in total; a browser
+        stuck on a frozen page is left to end with the app."""
         with self._lock:
             if self._closed:
                 return
             self._closed = True
-        for _ in self._threads:
+            threads = list(self._threads)
+        for _ in threads:
             self._jobs.put(None)
-        for thread in self._threads:
-            thread.join(timeout=20)
+        deadline = time.monotonic() + wait
+        for thread in threads:
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
 
     @property
     def available(self) -> bool:
@@ -181,13 +203,17 @@ class BrowserPool:
         future: Future = Future()
         self._jobs.put(_Job(url, quick, proxy, future))
         try:
-            return future.result(timeout=90)
-        except Exception as exc:  # timeout or worker failure
+            return future.result(timeout=PAGE_TIMEOUT)
+        except TimeoutError:
+            if not future.cancel():  # the page is loading and froze its browser
+                self._replace_stuck_worker()
+            return FetchResult(url, error="Browser timed out")
+        except Exception as exc:  # worker failure
             return FetchResult(url, error=f"Browser error: {exc}")
 
     # ---------------------------------------------------------------- worker
     def _launch(self, playwright):
-        options: dict = {"headless": True}
+        options: dict = {"headless": True, "args": _LAUNCH_ARGS}
         if self._uses_proxies:
             # Each site sets its own proxy on its context; Chromium wants a launch-level placeholder.
             options["proxy"] = {"server": "http://per-context"}
@@ -205,6 +231,8 @@ class BrowserPool:
                 last_error = exc
                 continue
             self.name = choice.name
+            # Headless browsers announce themselves as "HeadlessChrome"; many bot checks block that.
+            self._user_agent = _visible_user_agent(browser)
             return browser
         raise BrowserUnavailableError(
             "No supported browser could be started (Chrome, Edge, Brave or Vivaldi)"
@@ -260,6 +288,8 @@ class BrowserPool:
         }
         if job.proxy:
             context_options["proxy"] = job.proxy
+        if self._user_agent:
+            context_options["user_agent"] = self._user_agent
         context = browser.new_context(**context_options)
         try:
             context.route(
@@ -284,6 +314,18 @@ class BrowserPool:
             return FetchResult(page.url, text=page.content(), status=status)
         finally:
             context.close()
+
+
+def _visible_user_agent(browser) -> str | None:
+    try:
+        page = browser.new_page()
+        try:
+            agent = page.evaluate("navigator.userAgent")
+        finally:
+            page.close()
+    except Exception:
+        return None
+    return agent.replace("HeadlessChrome", "Chrome") if agent else None
 
 
 def _settle(page, quick: bool) -> None:

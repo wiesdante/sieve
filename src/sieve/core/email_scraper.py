@@ -22,12 +22,15 @@ from __future__ import annotations
 
 import codecs
 import heapq
+import logging
+import queue
 import re
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from http import HTTPStatus
 from typing import Protocol
 from urllib.parse import unquote, urljoin, urlsplit
 
@@ -40,6 +43,8 @@ from sieve.core.site_discovery import (
     has_contact_form,
     is_blocked,
     is_parked,
+    is_parking_redirect,
+    page_key,
     parse_sitemap,
     same_site,
     score_link,
@@ -48,6 +53,8 @@ from sieve.core.site_discovery import (
     structured_emails,
     toggle_www,
 )
+
+log = logging.getLogger(__name__)
 
 STANDARD = "standard"
 DIRECT = "direct"
@@ -77,6 +84,14 @@ _APP_ROOT = re.compile(r'<div[^>]+id=["\'](?:root|app|__next|__nuxt|q-app|___gat
 MAX_BYTES = 5 * 1024 * 1024
 SITE_TIME_LIMIT = 90.0
 PAGE_BUDGET = 8
+#: The browser retry in smart mode gets a smaller budget: the plain scan already looked around.
+BROWSER_RETRY_TIME_LIMIT = 60.0
+BROWSER_RETRY_PAGE_BUDGET = 6
+#: A site that is still running after this long is given up, so one stuck site never stalls a run.
+SITE_HARD_LIMIT = 240.0
+#: After Stop, running sites get this long to finish before the run ends without them.
+STOP_GRACE = 5.0
+_KNOWN_STATUSES = frozenset(int(status) for status in HTTPStatus)
 MAX_SCRIPTS = 2
 #: A page this likely to hold contact details ends the search once it yields an address.
 STRONG_PAGE = 90
@@ -311,6 +326,8 @@ class _SiteScan:
         self._seen: set[str] = set()
         self._rejected_seen: set[str] = set()
         self._visited: set[str] = set()
+        #: Pages that opened, with any language folder removed (/es/contact = /contact).
+        self._opened: set[str] = set()
         self._queue: list[tuple[int, int, str, str]] = []
         self._counter = 0
 
@@ -328,9 +345,16 @@ class _SiteScan:
 
     def _fetch(self, url: str, quick: bool = False, page: bool = True) -> FetchResult:
         self.result.pages += 1
-        self._visited.add(url.rstrip("/"))
+        self._visited.add(page_key(url))
         fetcher = self._page_fetcher if page else self._fetcher
-        return fetcher.fetch(url, quick=quick)
+        result = fetcher.fetch(url, quick=quick)
+        if page and result.ok and result.status < 400:
+            self._visited.add(page_key(result.url))
+            self._opened.add(page_key(result.url, ignore_language=True))
+        return result
+
+    def _already_seen(self, url: str) -> bool:
+        return page_key(url) in self._visited or page_key(url, ignore_language=True) in self._opened
 
     def _reject(self, email: str, reason: str) -> None:
         if email not in self._rejected_seen:
@@ -401,7 +425,7 @@ class _SiteScan:
         return added
 
     def _enqueue(self, url: str, score: int, why: str) -> None:
-        if url.rstrip("/") in self._visited:
+        if self._already_seen(url):
             return
         self._counter += 1
         heapq.heappush(self._queue, (-score, self._counter, url, why))
@@ -423,13 +447,21 @@ class _SiteScan:
             attempts.append("http://" + site[8:])
         attempts.append(toggle_www(site))
         last = FetchResult(site, error="No response")
-        for index, url in enumerate(attempts):
-            if index:
+        dead_hosts: set[str] = set()
+        tried = site
+        for url in attempts:
+            host = urlsplit(url).hostname or ""
+            if host in dead_hosts:
+                continue  # the server did not answer at all; http:// will not help
+            if url != site:
                 self.log("WARN", f"{last.error}; trying {url}")
+            tried = url
             last = self._fetch(url)
             if last.ok or not _is_connection_error(last.error):
                 return last, url
-        return last, attempts[-1]
+            if "timed out" in (last.error or "").lower():
+                dead_hosts.add(host)
+        return last, tried
 
     def run(self) -> SiteResult:
         self.log("INFO", f"Scanning {self.result.site}")
@@ -440,8 +472,27 @@ class _SiteScan:
             self.log("ERROR", self.result.error)
             return self._finish()
 
+        if home.status in (404, 410) and self._options.mode == STANDARD:
+            parts = urlsplit(home.url)
+            if parts.path.strip("/") or parts.query:
+                root = f"{parts.scheme}://{parts.netloc}/"
+                self.log("WARN", f"The page answered HTTP {home.status}; trying {root}")
+                root_page = self._fetch(root)
+                if root_page.ok:
+                    home = root_page
+
         self.result.final_url = home.url
         html = home.text or ""
+        if is_parking_redirect(self.result.site, home.url):
+            self.result.status = PARKED
+            self.result.error = f"Parked domain (redirects to {urlsplit(home.url).hostname})"
+            self.log("WARN", self.result.error)
+            return self._finish()
+        if home.status not in _KNOWN_STATUSES:
+            self.result.status = BLOCKED
+            self.result.error = f"Unusual answer (HTTP {home.status}), likely bot protection"
+            self.log("WARN", self.result.error)
+            return self._finish()
         if is_blocked(home.status, html) or home.status in _ACCESS_DENIED:
             self.result.status = BLOCKED
             self.result.error = (
@@ -499,7 +550,7 @@ class _SiteScan:
                 continue
             neg_score, _, url, why = heapq.heappop(self._queue)
             score = -neg_score
-            if url.rstrip("/") in self._visited or (self.result.emails and score < STRONG_PAGE):
+            if self._already_seen(url) or (self.result.emails and score < STRONG_PAGE):
                 continue
             if self._visit(url, score, why, home_url, languages) and score >= STRONG_PAGE:
                 return
@@ -623,7 +674,12 @@ def scan_site(
     if cancelled and cancelled():
         return first
 
-    second = _run_scan(_SiteScan(site, fetcher, email_filter, options, cancelled, browser))
+    retry_options = replace(
+        options,
+        site_time_limit=min(options.site_time_limit, BROWSER_RETRY_TIME_LIMIT),
+        page_budget=min(options.page_budget, BROWSER_RETRY_PAGE_BUDGET),
+    )
+    second = _run_scan(_SiteScan(site, fetcher, email_filter, retry_options, cancelled, browser))
     browser_name = getattr(browser, "name", "the browser")
     log_lines = [*first.log, f"── Retrying in {browser_name}", *second.log]
     if second.error.startswith("Browser not available"):
@@ -671,39 +727,66 @@ def scrape_sites(
     according to ``options.browser``."""
     options = options or ScrapeOptions()
     summary = ScrapeSummary()
-    lock = threading.Lock()
     workers = max(1, min(options.workers, len(sites) or 1))
-    queue = list(enumerate(sites))
-    queue.reverse()
+    pending = deque(enumerate(sites))
+    finished: queue.Queue[tuple[int, SiteResult]] = queue.Queue()
+    #: index -> (site, start time). Sites are scanned on daemon threads so that a site
+    #: stuck in a network call can be given up without blocking the run or app exit.
+    running: dict[int, tuple[str, float]] = {}
+    hard_limit = SITE_HARD_LIMIT
+    stop_deadline: float | None = None
 
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="scrape") as pool:
-        running: set[Future] = set()
+    def start(index: int, site: str) -> None:
+        fetcher = fetcher_for(index)
+        browser = browser_for(index) if browser_for and options.browser != BROWSER_OFF else None
 
-        def submit_next() -> None:
-            index, site = queue.pop()
-            browser = browser_for(index) if browser_for and options.browser != BROWSER_OFF else None
-            running.add(
-                pool.submit(
-                    scan_site, site, fetcher_for(index), email_filter, options, cancelled, browser
-                )
-            )
+        def work() -> None:
+            try:
+                result = scan_site(site, fetcher, email_filter, options, cancelled, browser)
+            except Exception as exc:  # a bug must not take the whole run down
+                log.exception("Scanning %s failed", site)
+                result = SiteResult(site, FAILED, error=f"Unexpected error: {exc}")
+            finished.put((index, result))
 
-        while queue and len(running) < workers:
-            submit_next()
-        while running:
-            done, _ = wait(running, timeout=0.5, return_when=FIRST_COMPLETED)
-            for future in done:
-                running.discard(future)
-                result = future.result()
-                with lock:
-                    summary.results.append(result)
-                if progress:
-                    progress(result, len(sites))
-            if cancelled and cancelled():
-                summary.stopped = True
-                queue.clear()
-            while queue and len(running) < workers:
-                submit_next()
+        running[index] = (site, time.monotonic())
+        threading.Thread(target=work, name=f"scrape-{index}", daemon=True).start()
+
+    def report(result: SiteResult) -> None:
+        summary.results.append(result)
+        if progress:
+            progress(result, len(sites))
+
+    def fill() -> None:
+        while pending and len(running) < workers:
+            start(*pending.popleft())
+
+    fill()
+    while running:
+        try:
+            index, result = finished.get(timeout=0.25)
+        except queue.Empty:
+            pass
+        else:
+            if running.pop(index, None) is not None:
+                report(result)
+        now = time.monotonic()
+        for index, (site, started) in list(running.items()):
+            if now - started > hard_limit:
+                del running[index]
+                stamp = time.strftime("%H:%M:%S")
+                report(SiteResult(
+                    site, FAILED, error=f"Gave up after {int(now - started)}s (site did not respond)",
+                    elapsed=now - started,
+                    log=[f"[{stamp}] ERROR   Gave up: the site was still loading after {int(now - started)}s"],
+                ))
+        if cancelled and cancelled():
+            summary.stopped = True
+            pending.clear()
+            if stop_deadline is None:
+                stop_deadline = now + STOP_GRACE
+            elif now > stop_deadline:
+                break  # sites still running are left behind; their threads end on their own
+        fill()
     return summary
 
 
@@ -731,8 +814,10 @@ class HttpFetcher:
         self._requests = requests
         self._session = requests.Session()
         self._session.headers.update(self.HEADERS)
+        # Never honour Retry-After: a server asking to wait an hour would stall the site.
         retry = Retry(total=1, backoff_factor=0.2, status_forcelist=[500, 502, 503, 504],
-                      allowed_methods=["GET"])
+                      allowed_methods=["GET"], respect_retry_after_header=False,
+                      raise_on_status=False)
         adapter = HTTPAdapter(max_retries=retry)
         self._session.mount("https://", adapter)
         self._session.mount("http://", adapter)

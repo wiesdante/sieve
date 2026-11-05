@@ -662,7 +662,7 @@ class EmailScraperPage(ToolPage):
             addresses = ", ".join(found.email for found in result.emails)
             lines.append(
                 f"{result.site}\t{STATUS_LABELS.get(result.status, result.status)}\t"
-                f"{len(result.emails)}\t{result.pages}\t{result.elapsed:.1f}\t"
+                f"{len(result.emails)}\t{result.pages}\t{result.elapsed:.1f}s\t"
                 f"{VIA_LABELS.get(result.via, result.via)}\t{result.error or result.final_url}\t{addresses}"
             )
         QGuiApplication.clipboard().setText("\n".join(lines))

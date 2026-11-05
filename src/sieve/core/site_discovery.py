@@ -148,12 +148,16 @@ def _compile(rules: dict[str, list[tuple[str, int]]], bounded: bool) -> dict:
 _COMPILED = {**_compile(_RULES, True), **_compile(_UNBOUNDED_RULES, False)}
 
 
+_ARTICLE_SLUG_WORDS = 5
+
+
 def score_link(href: str, text: str, languages: tuple[str, ...]) -> int:
     """How likely the link leads to a page with contact details (0 = not at all)."""
     if _FILE_LINK.search(href):
         return 0
     path = urlsplit(href).path
     folded_path, folded_text = fold(path), fold(text)
+    slug = path.rstrip("/").rsplit("/", 1)[-1]
     best = 0
     for language in languages:
         for pattern, score in _COMPILED.get(language, ()):
@@ -163,6 +167,8 @@ def score_link(href: str, text: str, languages: tuple[str, ...]) -> int:
                 best = max(best, score + (10 if in_text and in_path else 0))
     if best and (_NEGATIVE.search(folded_path) or _NEGATIVE.search(folded_text)):
         best -= 90
+    if best and len(re.split(r"[-_]+", slug)) >= _ARTICLE_SLUG_WORDS:
+        best -= 60  # "company-receives-order-...-contacts" is a news article, not a contact page
     return max(best, 0)
 
 
@@ -257,6 +263,7 @@ def guess_urls(final_url: str, languages: tuple[str, ...] = ("en", "tr", "de")) 
     folder the site redirected to (e.g. /tr/ or /de/)."""
     parts = urlsplit(final_url)
     root = f"{parts.scheme}://{parts.netloc}"
+    final_url = f"{root}{parts.path or '/'}"  # drop ?ckattempt=1 and the like
     folder = final_url if final_url.endswith("/") else final_url.rsplit("/", 1)[0] + "/"
     urls: list[str] = []
     for language in languages:
@@ -370,6 +377,31 @@ _CHALLENGE_MARKERS = (
     "g-recaptcha", "h-captcha", "hcaptcha.com/1/api",
 )
 _CHALLENGE_TITLES = ("<title>just a moment", "attention required! | cloudflare", "<title>access denied")
+
+
+_LANGUAGE_FOLDER = re.compile(r"^/[a-z]{2}(?:[-_][a-z]{2,4})?(?=/|$)", re.IGNORECASE)
+
+
+def page_key(url: str, ignore_language: bool = False) -> str:
+    """An address with scheme, ``www.``, fragment and trailing slash ignored, so the
+    same page is not opened twice. With ``ignore_language``, /es/contact-us and
+    /contact-us count as the same page."""
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    path = parts.path.rstrip("/")
+    if ignore_language:
+        path = _LANGUAGE_FOLDER.sub("", path)
+    return f"{host}{path or '/'}" + (f"?{parts.query}" if parts.query else "")
+
+
+def is_parking_redirect(site_url: str, final_url: str) -> bool:
+    """A redirect to another site that carries the domain as a parameter, which is how
+    parking services pass the domain along (``?dn=example.com``)."""
+    if same_site(site_url, final_url):
+        return False
+    domain = site_key(site_url)
+    query = unquote(urlsplit(final_url).query).lower()
+    return bool(domain) and domain in query
 
 
 def is_parked(final_url: str, visible_text: str) -> bool:

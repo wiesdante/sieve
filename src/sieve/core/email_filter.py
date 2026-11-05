@@ -74,7 +74,8 @@ PLACEHOLDER_DOMAINS = frozenset({
     "domain.com", "yourdomain.com", "your-domain.com", "mydomain.com", "yoursite.com",
     "your-site.com", "mysite.com", "yourcompany.com", "your-company.com", "mycompany.com",
     "companyname.com", "yourwebsite.com", "mywebsite.com", "sitename.com", "domainname.com",
-    "yourbusiness.com",
+    "yourbusiness.com", "website.com", "company.com", "yourname.com", "youremail.com",
+    "your-email.com", "emailaddress.com",
     # Turkish
     "siteniz.com", "sitenizinadi.com", "websiteniz.com", "alanadiniz.com", "alanadi.com",
     "firmaniz.com", "firmaadi.com", "firmaniz.com.tr", "sirketiniz.com", "sirketadi.com",
@@ -128,6 +129,8 @@ _WRAPPING = "<>;\"'()[]{},: \t\r\n."
 _ESCAPE = re.compile(r"\\u([0-9a-fA-F]{4})|\\x([0-9a-fA-F]{2})")
 _LEFTOVER_ESCAPE = re.compile(r"\\?u00(?:3[ceCE]|22|27|26|[aA]0)")
 _PERCENT = re.compile(r"%[0-9a-fA-F]{2}")
+#: ``\n``, ``\t``... written out in scripts and JSON; "\ninfo@x.com" must not become "ninfo@".
+_CONTROL_ESCAPE = re.compile(r"\\[nrtfv]")
 _OBFUSCATED_AT = re.compile(r"\s*[\(\[\{]\s*(?:at|@)\s*[\)\]\}]\s*|\s+_at_\s+", re.IGNORECASE)
 _OBFUSCATED_DOT = re.compile(r"\s*[\(\[\{]\s*(?:dot|punkt|nokta)\s*[\)\]\}]\s*", re.IGNORECASE)
 _UUID = re.compile(r"^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$")
@@ -178,6 +181,7 @@ def prepare_text(text: str) -> str:
                 return match.group(0)
 
         text = _ESCAPE.sub(decode, text)
+        text = _CONTROL_ESCAPE.sub(" ", text)
     text = _LEFTOVER_ESCAPE.sub(" ", text)
     text = _OBFUSCATED_AT.sub("@", text)
     return _OBFUSCATED_DOT.sub(".", text)
