@@ -194,6 +194,8 @@ def test_without_following_only_the_page_itself_is_read():
         '<a href="/p2">»</a>',
         '<a href="/p2">Следующая</a>',
         '<a href="/p2">다음</a>',
+        '<li class="next"><a href="/p2">Next <span aria-hidden="true">→</span></a></li>',
+        '<a href="/p2">› Sonraki</a>',
     ],
 )
 def test_next_page_detection(html):
@@ -306,3 +308,15 @@ def test_throttle_wait_ends_when_stopped():
     started = time.monotonic()
     throttle.wait("expo.com", stop.is_set)
     assert time.monotonic() - started < 2
+
+
+def test_thin_page_with_scripts_is_opened_in_the_browser():
+    plain = Site({"https://quotes.com/js/": '<a href="/">Home</a><a href="/login">Login</a>'
+                                            '<script>var data = [];</script>'})
+    browser = Site({"https://quotes.com/js/": '<a href="/">Home</a><a href="/author/a">A</a>'
+                                              '<a href="/author/b">B</a><a href="/author/c">C</a>'})
+    result = collect_links(
+        ["https://quotes.com/js/"], lambda _i: plain, CollectOptions(host_interval=0),
+        browser_for=lambda _i: browser,
+    ).results[0]
+    assert len(result.links) == 4 and result.via == "both"

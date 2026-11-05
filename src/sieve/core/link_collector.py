@@ -98,6 +98,7 @@ _NEXT_WORDS = (
     "tiep", "berikutnya", "selanjutnya", "다음", "次へ", "次", "下一页", "下页",
 )
 _NEXT_TEXTS = frozenset(fold(word) for word in _NEXT_WORDS)
+_ARROWS = re.compile(r"[›»>→⟶⇒▶►▸❯〉]+")
 _NEXT_CLASS = re.compile(r"(?:^|[-_\s])next(?:$|[-_\s])", re.IGNORECASE)
 
 
@@ -311,9 +312,11 @@ def find_next_page(soup, page_url: str, base: str | None = None) -> str | None:
     for anchor in soup.find_all("a", href=True):
         label = fold(" ".join(anchor.get_text(" ", strip=True).split()))
         aria = fold(anchor.get("aria-label") or anchor.get("title") or "")
+        bare = _ARROWS.sub("", label).strip()  # "Next →", "› Next" -> "next"
         classes = " ".join(anchor.get("class") or [])
         if (
             label in _NEXT_TEXTS
+            or (bare and bare in _NEXT_TEXTS)
             or aria in _NEXT_TEXTS
             or aria.startswith(("next", "go to next"))
             or (_NEXT_CLASS.search(classes) and len(label) <= 20)
@@ -390,7 +393,9 @@ def _worth_a_browser(problem: tuple[str, str] | None, parsed: ParsedLinks | None
         return True
     if parsed is None:
         return False
-    return not parsed.links or looks_js_rendered(html, parsed.visible_text)
+    # Very little text next to scripts: the list is probably drawn by JavaScript.
+    thin = len(parsed.visible_text) < 400 and "<script" in html.lower()
+    return not parsed.links or thin or looks_js_rendered(html, parsed.visible_text)
 
 
 class _EntryRun:
