@@ -77,7 +77,7 @@ STATUS_LABELS = {
     FOUND: "Found", UNSURE: "Unsure", NO_SITE: "No website", RATE_LIMITED: "Rate limited", FAILED: "Failed",
 }
 STATUS_COLORS = {
-    FOUND: theme.SUCCESS, UNSURE: theme.ACCENT_HOVER, NO_SITE: theme.TEXT_MUTED,
+    FOUND: theme.SUCCESS, UNSURE: theme.INFO, NO_SITE: theme.TEXT_MUTED,
     RATE_LIMITED: theme.WARNING, FAILED: theme.DANGER,
 }
 STATUS_TIPS = {
@@ -520,7 +520,7 @@ class WebsiteFinderPage(ToolPage):
             company, str(candidate.rank), VERDICT_LABELS.get(candidate.verdict, candidate.verdict),
             candidate.url, candidate.reason,
         ])
-        color = {"found": theme.SUCCESS, "unsure": theme.ACCENT_HOVER}.get(candidate.verdict, theme.TEXT_MUTED)
+        color = {"found": theme.SUCCESS, "unsure": theme.INFO}.get(candidate.verdict, theme.TEXT_MUTED)
         self._checked_table.item(row, 2).setForeground(QColor(color))
 
     def _rebuild_views(self) -> None:

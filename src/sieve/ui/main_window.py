@@ -4,10 +4,20 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QByteArray, QEasingCurve, QSize, Qt, QTimer, QVariantAnimation
-from PySide6.QtGui import QCloseEvent, QIcon, QPixmap
+from PySide6.QtCore import (
+    QByteArray,
+    QEasingCurve,
+    QEvent,
+    QObject,
+    QSize,
+    Qt,
+    QTimer,
+    QVariantAnimation,
+)
+from PySide6.QtGui import QBrush, QCloseEvent, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
+    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -29,6 +39,7 @@ from sieve.ui.pages.about import AboutPage
 from sieve.ui.pages.home import HomePage
 from sieve.ui.pages.settings import SettingsPage
 from sieve.ui.updates import UpdateController
+from sieve.ui.widgets import command_name
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +47,7 @@ HOME, SETTINGS, ABOUT = "home", "settings", "about"
 TOOL_PREFIX = "tool:"
 KEY_ROLE = Qt.ItemDataRole.UserRole
 LABEL_ROLE = Qt.ItemDataRole.UserRole + 1
+ICON_ROLE = Qt.ItemDataRole.UserRole + 2
 SIDEBAR_EXPANDED = 230
 SIDEBAR_COLLAPSED = 64
 
@@ -60,6 +72,7 @@ class MainWindow(QMainWindow):
         self._stack = QStackedWidget()
         root.addWidget(self._stack, 1)
         self.setCentralWidget(central)
+        self._scanlines = ScanlineOverlay(central)
 
         home = HomePage(context, list(self._tools.values()))
         home.open_tool.connect(lambda tool_id: self.navigate(TOOL_PREFIX + tool_id))
@@ -90,24 +103,18 @@ class MainWindow(QMainWindow):
         self._brand = QHBoxLayout()
         self._brand.setContentsMargins(18, 0, 12, 10)
         self._brand.setSpacing(10)
-        self._logo = QLabel()
-        pixmap = QPixmap(str(paths.resource_path("assets", "icon.png")))
-        if not pixmap.isNull():
-            self._logo.setPixmap(
-                pixmap.scaled(
-                    34, 34,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-            )
-        self._brand.addWidget(self._logo)
         self._titles = QWidget()
         titles = QVBoxLayout(self._titles)
         titles.setContentsMargins(0, 0, 0, 0)
-        titles.setSpacing(0)
-        name = QLabel(APP_NAME)
+        titles.setSpacing(2)
+        name = QLabel(f"{APP_NAME.upper()}_")
         name.setObjectName("BrandName")
-        version = QLabel(f"v{__version__}")
+        glow = QGraphicsDropShadowEffect(name)
+        glow.setColor(QColor(57, 255, 20, 150))
+        glow.setBlurRadius(16)
+        glow.setOffset(0, 0)
+        name.setGraphicsEffect(glow)
+        version = QLabel(f"v{__version__} // by {AUTHOR}")
         version.setObjectName("BrandVersion")
         titles.addWidget(name)
         titles.addWidget(version)
@@ -128,7 +135,7 @@ class MainWindow(QMainWindow):
         self._add_nav_item(self._main_nav, "Home", HOME, "home")
         self._tools_header: QListWidgetItem | None = None
         if self._tools:
-            header = QListWidgetItem("TOOLS")
+            header = QListWidgetItem("# tools")
             header.setFlags(Qt.ItemFlag.NoItemFlags)
             header.setData(KEY_ROLE, None)
             self._main_nav.addItem(header)
@@ -143,11 +150,6 @@ class MainWindow(QMainWindow):
         self._bottom_nav.setFixedHeight(self._bottom_nav.sizeHintForRow(0) * 2 + 12)
         layout.addWidget(self._bottom_nav)
 
-        self._footer = QLabel(f"by {AUTHOR}")
-        self._footer.setObjectName("Footer")
-        self._footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addSpacing(6)
-        layout.addWidget(self._footer)
 
         self._sidebar_animation = QVariantAnimation(self)
         self._sidebar_animation.setDuration(160)
@@ -184,9 +186,7 @@ class MainWindow(QMainWindow):
         return self._sidebar_expanded
 
     def _apply_sidebar_contents(self, expanded: bool) -> None:
-        self._logo.setVisible(expanded)
         self._titles.setVisible(expanded)
-        self._footer.setVisible(expanded)
         if expanded:
             self._brand.setContentsMargins(18, 0, 12, 10)
         else:
@@ -205,7 +205,9 @@ class MainWindow(QMainWindow):
                 label = item.data(LABEL_ROLE)
                 if label is None:
                     continue
-                item.setText(label if expanded else "")
+                # Expanded: "> email_scraper" text only; collapsed: the icon only.
+                item.setIcon(QIcon() if expanded else icon(item.data(ICON_ROLE)))
+                item.setText(self._nav_text(item) if expanded else "")
                 item.setToolTip("" if expanded else label)
 
     def _nav_list(self) -> QListWidget:
@@ -224,7 +226,12 @@ class MainWindow(QMainWindow):
         item = QListWidgetItem(icon(icon_name), label)
         item.setData(KEY_ROLE, key)
         item.setData(LABEL_ROLE, label)
+        item.setData(ICON_ROLE, icon_name)
         nav.addItem(item)
+
+    def _nav_text(self, item: QListWidgetItem) -> str:
+        marker = "> " if item.data(KEY_ROLE) == getattr(self, "_current_key", None) else "  "
+        return marker + command_name(item.data(LABEL_ROLE))
 
     # ------------------------------------------------------------ navigation
     def _add_page(self, key: str, page: QWidget) -> None:
@@ -264,6 +271,7 @@ class MainWindow(QMainWindow):
             receive(text)
 
     def _sync_selection(self, key: str) -> None:
+        self._current_key = key
         for nav in (self._main_nav, self._bottom_nav):
             nav.blockSignals(True)
             nav.clearSelection()
@@ -271,6 +279,8 @@ class MainWindow(QMainWindow):
                 item = nav.item(row)
                 if item.data(KEY_ROLE) == key:
                     nav.setCurrentItem(item)
+                if item.data(LABEL_ROLE) is not None and self._sidebar_expanded:
+                    item.setText(self._nav_text(item))
             nav.blockSignals(False)
 
     def current_page(self) -> QWidget | None:
@@ -310,3 +320,39 @@ class MainWindow(QMainWindow):
         except OSError:
             log.exception("Could not save settings")
         super().closeEvent(event)
+
+
+class ScanlineOverlay(QWidget):
+    """Faint horizontal lines over the whole window, like an old monitor.
+
+    Drawn on top of everything but invisible to the mouse; a tiled 1x3 pattern keeps
+    painting cheap.
+    """
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        tile = QPixmap(1, 3)
+        tile.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(tile)
+        painter.fillRect(0, 0, 1, 1, QColor(0, 0, 0, 60))
+        painter.end()
+        self._brush = QBrush(tile)
+        parent.installEventFilter(self)
+        self.setGeometry(parent.rect())
+        self.raise_()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 (Qt override)
+        if event.type() == QEvent.Type.Resize:
+            self.setGeometry(watched.rect())
+            self.raise_()
+        elif event.type() == QEvent.Type.ChildAdded:
+            self.raise_()
+        return False
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        painter = QPainter(self)
+        painter.fillRect(event.rect(), self._brush)
+        painter.end()

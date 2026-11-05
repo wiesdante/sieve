@@ -1,49 +1,74 @@
-"""Dark theme: Fusion palette plus a stylesheet for the custom widgets."""
+"""Terminal theme: black screen, phosphor green, one monospaced font everywhere.
+
+``apply_theme`` loads the bundled JetBrains Mono, sets a Fusion palette and the
+stylesheet, and installs a small helper that gives buttons and tabs their terminal
+lettering (primary buttons in capitals, the rest in lower case) and primary buttons
+a soft glow.
+"""
 
 from __future__ import annotations
 
-from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication
+import logging
 
-BACKGROUND = "#15161b"
-SURFACE = "#1d1f26"
-SURFACE_ALT = "#242731"
-BORDER = "#2e3240"
-TEXT = "#e7e9ef"
-TEXT_MUTED = "#9096a8"
-ACCENT = "#7c6cf2"
-ACCENT_HOVER = "#8f81f5"
-SUCCESS = "#3ecf8e"
-WARNING = "#f2b84b"
-DANGER = "#ef5f6b"
+from PySide6.QtCore import QEvent, QObject
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QPalette
+from PySide6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QPushButton, QTabBar
+
+from sieve import paths
+
+log = logging.getLogger(__name__)
+
+FONT_FAMILY = "JetBrains Mono"
+FONT_FILES = ("JetBrainsMono-Regular.ttf", "JetBrainsMono-Medium.ttf", "JetBrainsMono-Bold.ttf")
+
+BACKGROUND = "#030703"
+SURFACE = "#030703"          # panels sit on the same black as the window
+SURFACE_ALT = "#0a1a0a"      # hover, selected rows, tooltips
+BORDER = "#1d6b1d"
+BORDER_DIM = "#123f12"
+TEXT = "#a6f5a3"
+TEXT_BRIGHT = "#d4ffd1"
+TEXT_MUTED = "#4f9a4d"
+TEXT_FAINT = "#2c632b"
+ACCENT = "#39ff14"
+ACCENT_HOVER = "#7dff5f"
+ACCENT_DARK = "#1a7a0a"
+SUCCESS = "#39ff14"
+WARNING = "#ffb000"
+DANGER = "#ff4b4b"
+INFO = "#4fd6ff"
+#: Translucent green for selections, so text stays readable.
+SELECTION = "rgba(57, 255, 20, 0.28)"
 
 STYLESHEET = f"""
 QWidget {{
     color: {TEXT};
-    font-size: 10pt;
+    font-family: "{FONT_FAMILY}", "Cascadia Mono", Consolas, monospace;
+    font-size: 9.5pt;
 }}
-QMainWindow, QDialog {{
+QMainWindow, QDialog, QStackedWidget, QScrollArea > QWidget > QWidget {{
     background: {BACKGROUND};
 }}
 QToolTip {{
     background: {SURFACE_ALT};
-    color: {TEXT};
+    color: {TEXT_BRIGHT};
     border: 1px solid {BORDER};
     padding: 4px 6px;
 }}
 
 /* Sidebar */
 #Sidebar {{
-    background: {SURFACE};
-    border-right: 1px solid {BORDER};
+    background: {BACKGROUND};
+    border-right: 1px solid {BORDER_DIM};
 }}
 #BrandName {{
-    font-size: 16pt;
-    font-weight: 600;
+    color: {ACCENT};
+    font-size: 13pt;
+    font-weight: 700;
 }}
 #BrandVersion, #Footer {{
-    color: {TEXT_MUTED};
-    font-size: 9pt;
+    color: {TEXT_FAINT};
+    font-size: 8pt;
 }}
 #NavList {{
     background: transparent;
@@ -51,22 +76,24 @@ QToolTip {{
     outline: none;
 }}
 #NavList::item {{
-    padding: 9px 12px;
-    margin: 1px 8px;
-    border-radius: 6px;
+    color: {TEXT_MUTED};
+    padding: 6px 14px;
+    margin: 0;
+    border: none;
 }}
 #NavList::item:hover {{
+    color: {TEXT_BRIGHT};
     background: {SURFACE_ALT};
 }}
 #NavList::item:selected {{
     background: {ACCENT};
-    color: white;
+    color: {BACKGROUND};
+    font-weight: 700;
 }}
 #NavList::item:disabled {{
-    color: {TEXT_MUTED};
+    color: {TEXT_FAINT};
     font-size: 8pt;
-    font-weight: 600;
-    padding: 14px 12px 4px 12px;
+    padding: 14px 14px 4px 14px;
 }}
 #NavList::item:disabled:hover {{
     background: transparent;
@@ -78,121 +105,196 @@ QToolTip {{
 #SidebarToggle {{
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 6px;
     padding: 0;
 }}
 #SidebarToggle:hover {{
-    background: {SURFACE_ALT};
     border-color: {BORDER};
-}}
-#NavSection {{
-    color: {TEXT_MUTED};
-    font-size: 8pt;
-    font-weight: 600;
-    padding: 12px 20px 4px 20px;
 }}
 
 /* Pages */
 #PageTitle {{
-    font-size: 18pt;
-    font-weight: 600;
+    font-size: 15pt;
+    font-weight: 700;
+    color: {ACCENT};
 }}
-#PageSubtitle, QLabel[class="muted"] {{
+#PageSubtitle {{
     color: {TEXT_MUTED};
 }}
+QLabel[class="muted"] {{
+    color: {TEXT_MUTED};
+}}
+#Card:hover {{
+    border-color: {ACCENT};
+    background: {SURFACE_ALT};
+}}
+#Card QLabel {{
+    background: transparent;
+}}
 #Card, QGroupBox {{
-    background: {SURFACE};
+    background: {BACKGROUND};
     border: 1px solid {BORDER};
-    border-radius: 10px;
+    border-radius: 0;
 }}
 QGroupBox {{
-    margin-top: 14px;
-    padding: 18px 14px 14px 14px;
-    font-weight: 600;
+    margin-top: 12px;
+    padding: 16px 14px 12px 14px;
+    font-weight: 700;
 }}
 QGroupBox::title {{
     subcontrol-origin: margin;
-    left: 12px;
-    padding: 0 4px;
-    color: {TEXT};
+    left: 10px;
+    padding: 0 6px;
+    color: {ACCENT};
+    background: {BACKGROUND};
 }}
 #Banner {{
-    background: rgba(242, 184, 75, 0.12);
-    border: 1px solid rgba(242, 184, 75, 0.45);
-    border-radius: 8px;
+    background: rgba(255, 176, 0, 0.08);
+    border: 1px solid rgba(255, 176, 0, 0.55);
+    border-radius: 0;
+}}
+#Banner QLabel {{
+    color: {WARNING};
 }}
 #EmptyState {{
     color: {TEXT_MUTED};
-    font-size: 11pt;
+    font-size: 10pt;
 }}
 
 /* Inputs */
 QLineEdit, QPlainTextEdit, QTextBrowser, QComboBox, QSpinBox {{
     background: {BACKGROUND};
-    border: 1px solid {BORDER};
-    border-radius: 6px;
-    padding: 6px 8px;
-    selection-background-color: {ACCENT};
+    color: {TEXT_BRIGHT};
+    border: 1px solid {BORDER_DIM};
+    border-radius: 0;
+    padding: 5px 8px;
+    selection-background-color: {SELECTION};
+    selection-color: {TEXT_BRIGHT};
 }}
-QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus {{
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QSpinBox:focus {{
     border-color: {ACCENT};
 }}
+QComboBox {{
+    color: {TEXT};
+    padding-right: 24px;
+}}
+QComboBox:hover {{
+    border-color: {BORDER};
+    color: {TEXT_BRIGHT};
+}}
+QComboBox::drop-down {{
+    border: none;
+    width: 22px;
+}}
 QComboBox QAbstractItemView {{
-    background: {SURFACE_ALT};
+    background: {BACKGROUND};
+    color: {TEXT};
     border: 1px solid {BORDER};
     selection-background-color: {ACCENT};
+    selection-color: {BACKGROUND};
+    outline: none;
+}}
+
+/* Check boxes: [x] */
+QCheckBox {{
+    spacing: 8px;
+}}
+QCheckBox::indicator {{
+    width: 11px;
+    height: 11px;
+    border: 1px solid {BORDER};
+    background: {BACKGROUND};
+}}
+QCheckBox::indicator:hover {{
+    border-color: {ACCENT};
+}}
+QCheckBox::indicator:checked {{
+    background: {ACCENT};
+    border-color: {ACCENT};
+}}
+QCheckBox:disabled {{
+    color: {TEXT_FAINT};
+}}
+QCheckBox::indicator:disabled {{
+    border-color: {BORDER_DIM};
+    background: {BACKGROUND};
+}}
+QRadioButton::indicator {{
+    width: 11px;
+    height: 11px;
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+}}
+QRadioButton::indicator:checked {{
+    background: {ACCENT};
 }}
 
 /* Buttons */
 QPushButton {{
-    background: {SURFACE_ALT};
-    border: 1px solid {BORDER};
-    border-radius: 6px;
-    padding: 7px 14px;
+    background: {BACKGROUND};
+    color: {ACCENT};
+    border: 1px solid {ACCENT_DARK};
+    border-radius: 0;
+    padding: 6px 14px;
 }}
 QPushButton:hover {{
     border-color: {ACCENT};
+    color: {ACCENT_HOVER};
+    background: {SURFACE_ALT};
 }}
 QPushButton:pressed {{
-    background: {BORDER};
+    background: {ACCENT_DARK};
 }}
 QPushButton:disabled {{
-    color: {TEXT_MUTED};
-    border-color: {SURFACE_ALT};
+    color: {TEXT_FAINT};
+    border-color: {BORDER_DIM};
+    background: {BACKGROUND};
 }}
 QPushButton[primary="true"] {{
     background: {ACCENT};
     border-color: {ACCENT};
-    color: white;
-    font-weight: 600;
+    color: {BACKGROUND};
+    font-weight: 700;
 }}
 QPushButton[primary="true"]:hover {{
     background: {ACCENT_HOVER};
+    border-color: {ACCENT_HOVER};
+    color: {BACKGROUND};
+}}
+QPushButton[primary="true"]:pressed {{
+    background: {ACCENT_DARK};
 }}
 QPushButton[primary="true"]:disabled {{
-    background: {SURFACE_ALT};
-    border-color: {SURFACE_ALT};
-    color: {TEXT_MUTED};
+    background: {BACKGROUND};
+    border-color: {BORDER_DIM};
+    color: {TEXT_FAINT};
+}}
+QPushButton[compact="true"] {{
+    padding: 4px 10px;
+}}
+QPushButton::menu-indicator {{
+    subcontrol-position: right center;
+    right: 6px;
 }}
 
 /* Tabs */
 QTabWidget::pane {{
-    border: 1px solid {BORDER};
-    border-radius: 8px;
+    border: 1px solid {BORDER_DIM};
+    border-radius: 0;
     top: -1px;
-    background: {SURFACE};
+    background: {BACKGROUND};
 }}
 QTabBar::tab {{
     background: transparent;
-    color: {TEXT_MUTED};
-    padding: 8px 16px;
+    color: {TEXT_FAINT};
+    padding: 6px 14px;
+    border: none;
     border-bottom: 2px solid transparent;
 }}
 QTabBar::tab:selected {{
-    color: {TEXT};
+    color: {ACCENT};
     border-bottom: 2px solid {ACCENT};
 }}
-QTabBar::tab:hover {{
+QTabBar::tab:hover:!selected {{
     color: {TEXT};
 }}
 
@@ -200,36 +302,50 @@ QTabBar::tab:hover {{
 QListWidget#FileList::item {{
     padding: 4px 6px;
 }}
-QTableWidget, QListWidget#FileList {{
+QTableWidget, QListWidget#FileList, QListWidget {{
     background: {BACKGROUND};
-    border: 1px solid {BORDER};
-    border-radius: 6px;
-    gridline-color: {BORDER};
-    selection-background-color: {ACCENT};
+    alternate-background-color: {BACKGROUND};
+    border: 1px solid {BORDER_DIM};
+    border-radius: 0;
+    gridline-color: {BORDER_DIM};
+    selection-background-color: {SELECTION};
+    selection-color: {TEXT_BRIGHT};
+    outline: none;
+}}
+QTableWidget::item {{
+    border-bottom: 1px dashed {BORDER_DIM};
+    padding: 2px 4px;
 }}
 QHeaderView::section {{
-    background: {SURFACE_ALT};
+    background: {BACKGROUND};
     color: {TEXT_MUTED};
     border: none;
     border-bottom: 1px solid {BORDER};
-    padding: 6px 8px;
-    font-weight: 600;
+    padding: 5px 8px;
+    font-weight: 400;
+}}
+QTableCornerButton::section {{
+    background: {BACKGROUND};
+    border: none;
 }}
 
-/* Tool panels */
+/* Tool panels: drawn by TerminalPanel (border with the title set into it) */
 #Panel {{
-    background: {SURFACE};
-    border: 1px solid {BORDER};
-    border-radius: 10px;
+    background: {BACKGROUND};
+    border: none;
+}}
+#Panel QLabel {{
+    background: {BACKGROUND};
 }}
 #PanelTitle {{
-    font-size: 11pt;
-    font-weight: 600;
+    color: {ACCENT};
+    font-weight: 700;
+    padding: 0 6px;
 }}
 #Toolbar {{
-    background: {SURFACE};
-    border: 1px solid {BORDER};
-    border-radius: 10px;
+    background: {BACKGROUND};
+    border: 1px solid {BORDER_DIM};
+    border-radius: 0;
 }}
 #Stats {{
     color: {TEXT_MUTED};
@@ -238,69 +354,43 @@ QSplitter::handle {{
     background: transparent;
 }}
 QPlainTextEdit#Editor {{
-    font-family: "Cascadia Mono", "Consolas", monospace;
-    font-size: 10pt;
-}}
-QPushButton[compact="true"] {{
-    background: {SURFACE_ALT};
-    border: 1px solid {BORDER};
-    border-radius: 6px;
-    color: {TEXT};
-    padding: 5px 10px;
-}}
-QPushButton[compact="true"]:hover {{
-    border-color: {ACCENT};
-    background: {BORDER};
-}}
-QPushButton[compact="true"]:pressed {{
-    background: {BACKGROUND};
-}}
-QPushButton[compact="true"]:disabled {{
-    background: transparent;
-    border-color: {SURFACE_ALT};
-    color: {TEXT_MUTED};
+    font-size: 9.5pt;
+    color: {TEXT_BRIGHT};
 }}
 
 /* Segmented mode switch */
 QPushButton[segment] {{
     background: {BACKGROUND};
-    border: 1px solid {BORDER};
+    border: 1px solid {ACCENT_DARK};
     color: {TEXT_MUTED};
-    padding: 6px 16px;
+    padding: 5px 14px;
     border-radius: 0;
 }}
-QPushButton[segment="left"] {{
-    border-top-left-radius: 6px;
-    border-bottom-left-radius: 6px;
-}}
-QPushButton[segment="right"] {{
-    border-top-right-radius: 6px;
-    border-bottom-right-radius: 6px;
-    border-left: none;
-}}
-QPushButton[segment="middle"] {{
+QPushButton[segment="right"], QPushButton[segment="middle"] {{
     border-left: none;
 }}
 QPushButton[segment]:checked {{
     background: {ACCENT};
     border-color: {ACCENT};
-    color: white;
-    font-weight: 600;
+    color: {BACKGROUND};
+    font-weight: 700;
 }}
 QPushButton[segment]:hover:!checked {{
-    color: {TEXT};
+    color: {ACCENT};
 }}
 
 QProgressBar {{
     background: {BACKGROUND};
     border: 1px solid {BORDER};
-    border-radius: 6px;
+    border-radius: 0;
     text-align: center;
-    height: 18px;
+    color: {TEXT_BRIGHT};
+    font-weight: 700;
+    height: 16px;
 }}
 QProgressBar::chunk {{
-    background: {ACCENT};
-    border-radius: 5px;
+    background: rgba(57, 255, 20, 0.45);
+    margin: 2px;
 }}
 QScrollArea {{
     background: transparent;
@@ -308,42 +398,144 @@ QScrollArea {{
 }}
 QScrollBar:vertical {{
     background: transparent;
-    width: 10px;
+    width: 8px;
+    margin: 0;
 }}
 QScrollBar::handle:vertical {{
     background: {BORDER};
-    border-radius: 5px;
     min-height: 30px;
 }}
-QScrollBar::add-line, QScrollBar::sub-line {{
+QScrollBar::handle:vertical:hover {{
+    background: {ACCENT_DARK};
+}}
+QScrollBar:horizontal {{
+    background: transparent;
+    height: 8px;
+}}
+QScrollBar::handle:horizontal {{
+    background: {BORDER};
+    min-width: 30px;
+}}
+QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::sub-page {{
     height: 0;
+    width: 0;
+    background: transparent;
+}}
+QMenu {{
+    background: {BACKGROUND};
+    border: 1px solid {BORDER};
+    padding: 4px 0;
+}}
+QMenu::item {{
+    padding: 5px 18px;
+    color: {TEXT};
+}}
+QMenu::item:selected {{
+    background: {ACCENT};
+    color: {BACKGROUND};
+}}
+QMenu::separator {{
+    height: 1px;
+    background: {BORDER_DIM};
+    margin: 4px 8px;
+}}
+QMessageBox QLabel {{
+    color: {TEXT_BRIGHT};
 }}
 """
 
 
+def load_fonts() -> bool:
+    """Register the bundled JetBrains Mono; False if the files are missing."""
+    loaded = False
+    for name in FONT_FILES:
+        path = paths.resource_path("assets", "fonts", name)
+        if path.exists() and QFontDatabase.addApplicationFont(str(path)) != -1:
+            loaded = True
+    if not loaded:
+        log.warning("JetBrains Mono could not be loaded; using the system's monospaced font")
+    return loaded
+
+
+class _TerminalLettering(QObject):
+    """Primary buttons in capitals with a glow, other buttons and tabs in lower case.
+
+    Done through the font (not the text), so labels changed later, such as
+    "Stopping...", keep the style.
+    """
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 (Qt override)
+        kind = event.type()
+        if kind == QEvent.Type.Polish:
+            if isinstance(watched, QPushButton):
+                self._style_button(watched)
+            elif isinstance(watched, QTabBar):
+                font = watched.font()
+                font.setCapitalization(QFont.Capitalization.AllLowercase)
+                watched.setFont(font)
+        elif kind == QEvent.Type.EnabledChange and isinstance(watched, QPushButton):
+            effect = watched.graphicsEffect()
+            if isinstance(effect, QGraphicsDropShadowEffect):
+                effect.setEnabled(watched.isEnabled())
+        return False
+
+    @staticmethod
+    def _style_button(button: QPushButton) -> None:
+        if button.objectName() == "SidebarToggle":
+            return
+        primary = bool(button.property("primary"))
+        segment = button.property("segment") is not None
+        font = button.font()
+        font.setCapitalization(
+            QFont.Capitalization.AllUppercase if primary or segment else QFont.Capitalization.AllLowercase
+        )
+        button.setFont(font)
+        if primary and button.graphicsEffect() is None:
+            glow = QGraphicsDropShadowEffect(button)
+            glow.setColor(QColor(57, 255, 20, 110))
+            glow.setBlurRadius(18)
+            glow.setOffset(0, 0)
+            glow.setEnabled(button.isEnabled())
+            button.setGraphicsEffect(glow)
+
+
+_lettering: _TerminalLettering | None = None
+
+
 def apply_theme(app: QApplication) -> None:
+    global _lettering
     app.setStyle("Fusion")
+    if load_fonts():
+        font = QFont(FONT_FAMILY)
+        font.setPointSizeF(9.5)
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        app.setFont(font)
     palette = QPalette()
     colors = {
         QPalette.ColorRole.Window: BACKGROUND,
         QPalette.ColorRole.WindowText: TEXT,
         QPalette.ColorRole.Base: BACKGROUND,
-        QPalette.ColorRole.AlternateBase: SURFACE,
-        QPalette.ColorRole.Text: TEXT,
-        QPalette.ColorRole.Button: SURFACE_ALT,
-        QPalette.ColorRole.ButtonText: TEXT,
+        QPalette.ColorRole.AlternateBase: BACKGROUND,
+        QPalette.ColorRole.Text: TEXT_BRIGHT,
+        QPalette.ColorRole.Button: BACKGROUND,
+        QPalette.ColorRole.ButtonText: ACCENT,
         QPalette.ColorRole.Highlight: ACCENT,
-        QPalette.ColorRole.HighlightedText: "#ffffff",
-        QPalette.ColorRole.Link: ACCENT_HOVER,
+        QPalette.ColorRole.HighlightedText: BACKGROUND,
+        QPalette.ColorRole.Link: ACCENT,
+        QPalette.ColorRole.LinkVisited: ACCENT_HOVER,
         QPalette.ColorRole.ToolTipBase: SURFACE_ALT,
-        QPalette.ColorRole.ToolTipText: TEXT,
-        QPalette.ColorRole.PlaceholderText: TEXT_MUTED,
+        QPalette.ColorRole.ToolTipText: TEXT_BRIGHT,
+        QPalette.ColorRole.PlaceholderText: TEXT_FAINT,
+        QPalette.ColorRole.Mid: BORDER_DIM,
+        QPalette.ColorRole.Dark: BACKGROUND,
+        QPalette.ColorRole.Light: BORDER,
     }
     for role, color in colors.items():
         palette.setColor(role, QColor(color))
-    palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(TEXT_MUTED))
-    palette.setColor(
-        QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(TEXT_MUTED)
-    )
+    for role in (QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText, QPalette.ColorRole.WindowText):
+        palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(TEXT_FAINT))
     app.setPalette(palette)
     app.setStyleSheet(STYLESHEET)
+    if _lettering is None:
+        _lettering = _TerminalLettering(app)
+        app.installEventFilter(_lettering)

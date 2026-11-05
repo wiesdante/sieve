@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QObject, QPointF, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -54,17 +55,50 @@ def compact_button(text: str, tooltip: str = "") -> QPushButton:
     return button
 
 
+class TerminalPanel(QFrame):
+    """A box drawn with a thin green line whose top edge runs through the header row,
+    so the title sits in the frame like ``┌─ RESULTS ─────┐``."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName("Panel")
+        self.title_label: QLabel | None = None
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().paintEvent(event)
+        from sieve.ui import theme
+
+        top = 0.5
+        if self.title_label is not None:
+            top = self.title_label.geometry().center().y() + 0.5
+        painter = QPainter(self)
+        pen = QPen(QColor(theme.BORDER))
+        pen.setWidth(1)
+        painter.setPen(pen)
+        right, bottom = self.width() - 0.5, self.height() - 0.5
+        painter.drawLine(QPointF(0.5, top), QPointF(right, top))
+        painter.drawLine(QPointF(0.5, top), QPointF(0.5, bottom))
+        painter.drawLine(QPointF(right, top), QPointF(right, bottom))
+        painter.drawLine(QPointF(0.5, bottom), QPointF(right, bottom))
+        painter.end()
+
+
 def titled_panel(title: str) -> tuple[QFrame, QVBoxLayout, QHBoxLayout]:
-    """A rounded panel with a header row; returns (panel, body layout, header layout)."""
-    panel = QFrame()
-    panel.setObjectName("Panel")
+    """A framed panel with a header row; returns (panel, body layout, header layout).
+
+    The frame's top line runs behind the header row: the title and any labels or
+    buttons placed there cover it, which sets them into the frame.
+    """
+    panel = TerminalPanel()
     body = QVBoxLayout(panel)
-    body.setContentsMargins(14, 12, 14, 12)
+    body.setContentsMargins(14, 0, 14, 12)
     body.setSpacing(8)
     header = QHBoxLayout()
     header.setSpacing(6)
-    label = QLabel(title)
+    header.setContentsMargins(0, 0, 0, 2)
+    label = QLabel(title.upper())
     label.setObjectName("PanelTitle")
+    panel.title_label = label
     header.addWidget(label)
     body.addLayout(header)
     return panel, body, header
@@ -76,9 +110,9 @@ def stats_html(items: list[tuple[str, int, str | None]]) -> str:
 
     parts = []
     for label, value, color in items:
-        style = f"color:{color or theme.TEXT}; font-weight:600"
-        parts.append(f'{label} <span style="{style}">{format_number(value)}</span>')
-    return "&nbsp;&nbsp;·&nbsp;&nbsp;".join(parts)
+        style = f"color:{color or theme.TEXT_BRIGHT}; font-weight:700"
+        parts.append(f'{label.lower()} <span style="{style}">{format_number(value)}</span>')
+    return "&nbsp;·&nbsp;".join(parts)
 
 
 def flash_button(button: QPushButton, text: str, duration_ms: int = 1500) -> None:
@@ -180,22 +214,75 @@ class FileDropList(QListWidget):
         return [Path(self.item(row).data(Qt.ItemDataRole.UserRole)) for row in range(self.count())]
 
 
+def command_name(title: str) -> str:
+    """"Email Scraper" -> "email_scraper", the name shown at the prompt."""
+    return re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
+
+
+class BlinkingCursor(QWidget):
+    """The block cursor after the prompt."""
+
+    def __init__(self, height: int) -> None:
+        super().__init__()
+        self.setFixedSize(max(8, height // 2), height)
+        self._on = True
+        self._timer = QTimer(self)
+        self._timer.setInterval(530)
+        self._timer.timeout.connect(self._blink)
+        self._timer.start()
+
+    def _blink(self) -> None:
+        self._on = not self._on
+        if self.isVisible():
+            self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if self._on:
+            from sieve.ui import theme
+
+            painter = QPainter(self)
+            painter.fillRect(self.rect(), QColor(theme.ACCENT))
+            painter.end()
+
+
+def prompt_header(title: str, subtitle: str = "") -> QWidget:
+    """``root@sieve:~$ email_scraper█`` and a ``// description`` line."""
+    from sieve.ui import theme
+
+    box = QWidget()
+    layout = QVBoxLayout(box)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(2)
+    row = QHBoxLayout()
+    row.setSpacing(0)
+    heading = QLabel(
+        f'<span style="color:{theme.TEXT_MUTED}; font-weight:400">root@sieve:~$</span>&nbsp;'
+        f"{command_name(title)}"
+    )
+    heading.setObjectName("PageTitle")
+    heading.setTextFormat(Qt.TextFormat.RichText)
+    row.addWidget(heading)
+    row.addSpacing(4)
+    row.addWidget(BlinkingCursor(heading.sizeHint().height() - 6), 0, Qt.AlignmentFlag.AlignVCenter)
+    row.addStretch(1)
+    layout.addLayout(row)
+    if subtitle:
+        sub = QLabel(f"// {subtitle[0].lower()}{subtitle[1:]}" if subtitle else "")
+        sub.setObjectName("PageSubtitle")
+        sub.setWordWrap(True)
+        layout.addWidget(sub)
+    return box
+
+
 class ToolPage(QWidget):
     """Non-scrolling page for tools: a compact header and a layout that fills the window."""
 
     def __init__(self, title: str, subtitle: str = "") -> None:
         super().__init__()
         self.content = QVBoxLayout(self)
-        self.content.setContentsMargins(24, 20, 24, 20)
+        self.content.setContentsMargins(24, 18, 24, 18)
         self.content.setSpacing(12)
-        heading = QLabel(title)
-        heading.setObjectName("PageTitle")
-        self.content.addWidget(heading)
-        if subtitle:
-            sub = QLabel(subtitle)
-            sub.setObjectName("PageSubtitle")
-            sub.setWordWrap(True)
-            self.content.addWidget(sub)
+        self.content.addWidget(prompt_header(title, subtitle))
 
 
 def format_number(value: int) -> str:
@@ -216,14 +303,7 @@ class Page(QScrollArea):
         self.content.setContentsMargins(32, 28, 32, 28)
         self.content.setSpacing(14)
 
-        heading = QLabel(title)
-        heading.setObjectName("PageTitle")
-        self.content.addWidget(heading)
-        if subtitle:
-            sub = QLabel(subtitle)
-            sub.setObjectName("PageSubtitle")
-            sub.setWordWrap(True)
-            self.content.addWidget(sub)
+        self.content.addWidget(prompt_header(title, subtitle))
         self.content.addSpacing(6)
         self.setWidget(container)
 

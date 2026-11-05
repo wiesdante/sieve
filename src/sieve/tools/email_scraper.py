@@ -100,7 +100,7 @@ STATUS_TIPS = {
 }
 STATUS_COLORS = {
     FOUND: theme.SUCCESS,
-    FORM_ONLY: theme.ACCENT_HOVER,
+    FORM_ONLY: theme.INFO,
     EMPTY: theme.TEXT_MUTED,
     PARKED: theme.TEXT_MUTED,
     BLOCKED: theme.WARNING,

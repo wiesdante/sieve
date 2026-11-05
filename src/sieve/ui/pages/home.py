@@ -10,21 +10,26 @@ from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QVBoxLay
 from sieve.context import AppContext
 from sieve.credentials import GITHUB_TOKEN
 from sieve.tools import Tool
-from sieve.ui.widgets import Page, muted_label, primary_button
+from sieve.ui import theme
+from sieve.ui.widgets import Page, command_name, muted_label, primary_button
 
 
 class ToolCard(QFrame):
     clicked = Signal(str)
 
-    def __init__(self, tool: Tool) -> None:
+    def __init__(self, tool: Tool, number: int = 0) -> None:
         super().__init__()
         self.setObjectName("Card")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._tool_id = tool.id
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 14)
-        name = QLabel(tool.name)
-        name.setStyleSheet("font-weight: 600; font-size: 11pt;")
+        name = QLabel(
+            f'<span style="color:{theme.TEXT_FAINT}">{number:02d}</span>&nbsp;&nbsp;'
+            f'<span style="color:{theme.ACCENT}; font-weight:700">{command_name(tool.name)}</span>'
+        )
+        name.setTextFormat(Qt.TextFormat.RichText)
+        name.setStyleSheet("font-size: 10.5pt;")
         layout.addWidget(name)
         layout.addWidget(muted_label(tool.description))
         layout.addStretch(1)
@@ -40,7 +45,7 @@ class HomePage(Page):
     open_settings = Signal()
 
     def __init__(self, context: AppContext, tools: list[Tool]) -> None:
-        super().__init__("Welcome", "One place for all your data scraping workflows.")
+        super().__init__("Home", "One place for all your data scraping workflows.")
         self._context = context
 
         self._banner = QFrame()
@@ -67,14 +72,16 @@ class HomePage(Page):
             self.content.addWidget(empty)
         else:
             ordered = sorted(tools, key=lambda t: t.category)
+            number = 0
             for category, group in groupby(ordered, key=lambda t: t.category):
-                header = QLabel(category)
-                header.setStyleSheet("font-weight: 600; margin-top: 8px;")
+                header = QLabel(f"# {category.lower()}")
+                header.setStyleSheet(f"color: {theme.TEXT_MUTED}; margin-top: 8px;")
                 self.content.addWidget(header)
                 grid = QGridLayout()
                 grid.setSpacing(12)
                 for index, tool in enumerate(group):
-                    card = ToolCard(tool)
+                    number += 1
+                    card = ToolCard(tool, number)
                     card.clicked.connect(self.open_tool)
                     grid.addWidget(card, index // 3, index % 3)
                 for column in range(3):

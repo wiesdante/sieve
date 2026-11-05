@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from sieve.core.email_filter import CATEGORIES, EmailFilter, FilterSettings, parse_entries
 from sieve.storage import JsonDocument
+from sieve.ui import theme
 from sieve.ui.widgets import muted_label, primary_button
 
 log = logging.getLogger(__name__)
@@ -109,7 +110,7 @@ class EmailRulesDialog(QDialog):
 
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
-        line.setStyleSheet("color: rgba(255,255,255,0.08);")
+        line.setStyleSheet(f"color: {theme.BORDER_DIM};")
         layout.addWidget(line)
 
         self._mx = QCheckBox("Verify that the domain accepts email (MX check)")
@@ -136,7 +137,7 @@ class EmailRulesDialog(QDialog):
         layout.addWidget(muted_label(intro))
         help_label = QLabel(ENTRY_HELP)
         help_label.setObjectName("Stats")
-        help_label.setStyleSheet("font-family: 'Cascadia Mono', Consolas, monospace;")
+        help_label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
         layout.addWidget(help_label)
         editor = QPlainTextEdit()
         editor.setObjectName("Editor")

@@ -1,7 +1,7 @@
 """Small line icons drawn with QPainter, so no icon font or image plugin is needed.
 
 Every icon is drawn on a 24x24 grid with a 2px rounded stroke and comes in two
-colours: muted for the normal state and white for the selected state.
+colours: muted green for the normal state and black on green for the selected state.
 """
 
 from __future__ import annotations
@@ -182,5 +182,5 @@ def icon(name: str) -> QIcon:
     result = QIcon()
     result.addPixmap(_pixmap(draw, theme.TEXT_MUTED), QIcon.Mode.Normal)
     result.addPixmap(_pixmap(draw, theme.TEXT), QIcon.Mode.Active)
-    result.addPixmap(_pixmap(draw, "#ffffff"), QIcon.Mode.Selected)
+    result.addPixmap(_pixmap(draw, theme.BACKGROUND), QIcon.Mode.Selected)
     return result

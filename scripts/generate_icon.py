@@ -2,8 +2,8 @@
 
 Usage: python scripts/generate_icon.py   (requires Pillow)
 
-Design: a dark rounded tile with a violet sieve ring, a square mesh inside it
-and a diagonal handle.
+Design: a black rounded tile with a phosphor-green sieve ring, a square mesh
+inside it and a diagonal handle, with a soft green glow.
 """
 
 from __future__ import annotations
@@ -15,10 +15,11 @@ from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
 SIZE = 1024
-TILE_TOP = (30, 32, 44)
-TILE_BOTTOM = (18, 19, 26)
-RING = (139, 124, 255, 255)
-MESH = (255, 255, 255, 230)
+TILE_TOP = (10, 22, 10)
+TILE_BOTTOM = (2, 6, 2)
+RING = (57, 255, 20, 255)
+MESH = (190, 255, 180, 235)
+GLOW = (57, 255, 20)
 ICO_SIZES = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48), (64, 64), (128, 128), (256, 256)]
 
 
@@ -65,11 +66,11 @@ def _glyph() -> Image.Image:
 
 
 def _with_shadow(layer: Image.Image) -> Image.Image:
-    shadow = Image.new("RGBA", layer.size, (0, 0, 0, 0))
-    shadow.putalpha(layer.split()[3].point(lambda v: min(v, 120)))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(26))
+    shadow = Image.new("RGBA", layer.size, (*GLOW, 0))
+    shadow.putalpha(layer.split()[3].point(lambda v: min(v, 150)))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(30))
     out = Image.new("RGBA", layer.size, (0, 0, 0, 0))
-    out.alpha_composite(shadow, (0, 14))
+    out.alpha_composite(shadow)
     out.alpha_composite(layer)
     return out
 
