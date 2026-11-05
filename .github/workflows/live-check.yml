@@ -1,0 +1,36 @@
+name: Live check
+
+# Scans the given sites from a Windows machine with a real browser and prints the log.
+on:
+  workflow_dispatch:
+    inputs:
+      sites:
+        description: "Sites, separated by spaces"
+        required: true
+      browser:
+        description: "Browser mode"
+        default: smart
+        type: choice
+        options: [smart, always, "off"]
+
+jobs:
+  scan:
+    name: Scan sites
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install requests PySocks beautifulsoup4 dnspython playwright
+
+      - name: Scan
+        env:
+          SITES: ${{ inputs.sites }}
+          BROWSER: ${{ inputs.browser }}
+        shell: bash
+        run: python scripts/live_check.py --browser "$BROWSER" $SITES
