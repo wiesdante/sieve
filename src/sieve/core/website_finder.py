@@ -138,7 +138,8 @@ CATEGORIES: dict[str, Category] = {
         reuters.com bloomberg.com forbes.com cnbc.com bbc.com bbc.co.uk cnn.com nytimes.com
         theguardian.com ft.com wsj.com apnews.com businesswire.com prnewswire.com globenewswire.com
         accesswire.com einpresswire.com finance.yahoo.com news.yahoo.com investing.com
-        macrotrends.net statista.com sec.gov stockanalysis.com morningstar.com hurriyet.com.tr
+        macrotrends.net statista.com sec.gov marketwatch.com seekingalpha.com barrons.com
+        tradingview.com fool.com zacks.com simplywall.st companiesmarketcap.com stockanalysis.com morningstar.com hurriyet.com.tr
         milliyet.com.tr sabah.com.tr haberturk.com ntv.com.tr cnnturk.com sozcu.com.tr aa.com.tr
         dunya.com bloomberght.com ekonomim.com defensenews.com janes.com armyrecognition.com
         defence-blog.com militaryleak.com defenseworld.net army-technology.com
@@ -261,7 +262,7 @@ _LEGAL = _set("""ltd limited sti sirketi sirket as anonim ve and the of und et y
 inc incorporated corp corporation co company llc llp lp gmbh mbh ag kg ohg ug se sa sas sarl srl
 spa sl bv nv oy oyj ab aps plc pty pvt private sanayi sanayii san tic ticaret ith ihr ithalat
 ihracat pazarlama paz koll kollektif mahdut sirketler grubu kft zrt nyrt doo dd ad ooo oao zao pjsc
-jsc kk sdn bhd tbk pte cv""")
+jsc jsco ojsc cjsc pjsco kk sdn bhd tbk pte cv""")
 #: Common words that alone do not identify a company.
 _GENERIC = _set("""group grup holding international intl global industries industry industrial
 technologies technology tech teknoloji systems system sistem sistemleri solutions solution
@@ -270,9 +271,9 @@ trading export import makina makine makinalari elektronik electronics energy ene
 construction products urunleri manufacturing uretim imalat consulting danismanlik logistics
 lojistik security guvenlik software yazilim digital media medya design tasarim systeme""")
 #: Extra words often added to a company's domain.
+#: Country words are left out on purpose: arsenal-usa.com is not Bulgaria's Arsenal JSCo.
 _DOMAIN_FILLERS = ("group", "grup", "global", "intl", "international", "official", "online", "web",
-                   "corp", "inc", "ltd", "hq", "tr", "turkey", "turkiye", "usa", "us", "uk", "eu", "de",
-                   "the", "my", "get", "go", "co")
+                   "corp", "inc", "ltd", "hq", "the", "my", "get", "go", "co")
 _HOME_SLUGS = _set("""home index default main anasayfa startseite accueil inicio inizio
 homepage portal welcome""")
 _LANGUAGE_SLUG = re.compile(r"^[a-z]{2}(?:[-_][a-z]{2})?$")

@@ -6,6 +6,24 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-05
+
+### Fixed
+
+- **Website Finder searches through your browser (Chrome or Edge).** DuckDuckGo answered
+  every plain request with "slow down" (HTTP 202) from the very first search, even from
+  home connections, so no company got a result. A real browser gets results; it runs out
+  of sight and keeps each connection's cookies like a person searching.
+- The window shows what a run is doing while it waits ("DuckDuckGo asked to slow down ·
+  waiting 38s"), instead of staying silent until a company is done.
+- A media company keeps its own site even when it is a news site (Army Recognition Group →
+  armyrecognition.com).
+- Country words in a domain no longer count as part of a name: arsenal-usa.com is not
+  Bulgaria's Arsenal 2000 JSCo.
+- Finance sites such as MarketWatch and Seeking Alpha are never taken for a company's site.
+- Quotation marks in a company name no longer reach the search.
+- **Use proxies** shows unchecked when the proxy list is empty or turned off.
+
 ## [0.12.0] - 2026-11-05
 
 ### Added
@@ -355,7 +373,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/wiesdante/sieve/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/wiesdante/sieve/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/wiesdante/sieve/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/wiesdante/sieve/compare/v0.10.3...v0.11.0

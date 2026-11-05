@@ -80,6 +80,7 @@ def test_domains_that_belong_to_the_company(company, url):
         ("Bird Aerosystems", "https://www.aerosystems.com/"),
         ("Koç Holding", "https://www.kochind.com/"),
         ("Rafael Advanced Defense Systems", "https://www.advanceddefense.com/"),
+        ("ARSENAL 2000 JSCO", "https://arsenal-usa.com/"),
     ],
 )
 def test_domains_that_do_not_belong_to_the_company(company, url):
@@ -104,6 +105,7 @@ def test_domains_that_do_not_belong_to_the_company(company, url):
         ("https://sites.google.com/view/acme", "Website-builder and hosting profiles"),
         ("https://www.kariyer.net/firma/acme", "Job sites and company reviews"),
         ("https://www.tripadvisor.com.tr/Hotel-acme", "Maps, reviews and travel"),
+        ("https://www.marketwatch.com/investing/stock/aiad", "Encyclopedias, news and finance"),
         ("https://acme.com/catalogue.pdf", "A file, not a website"),
     ],
 )
