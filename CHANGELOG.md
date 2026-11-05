@@ -24,6 +24,9 @@ and the project follows [Semantic Versioning](https://semver.org/).
   - Recognises DuckDuckGo's bot checks and rate limits, waits and retries, and reports
     **Rate limited** instead of "no website". Only DuckDuckGo's own "No results" counts as
     an empty search.
+  - When DuckDuckGo keeps limiting every connection, the remaining companies are reported
+    as rate limited within a few minutes instead of waiting on; **Retry failed** puts them
+    back in the list for later.
   - Spreads searches over the proxies from Settings, each resting between searches; a
     rate-limited proxy rests longer and a proxy that keeps failing is dropped. Works without
     proxies too, more slowly.
