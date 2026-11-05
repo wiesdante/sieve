@@ -25,7 +25,7 @@ from sieve.core.site_discovery import (
 )
 
 pytest.importorskip("bs4")
-ALL = ("en", "tr", "de")
+from sieve.core.site_discovery import LANGUAGES as ALL  # noqa: E402
 
 
 class Site:
@@ -224,3 +224,120 @@ def test_subdomain_links_are_followed():
         "https://destek.acme.com/iletisim": "destek@acme.com",
     })
     assert scan_site("https://www.acme.com", site).emails[0].email == "destek@acme.com"
+
+
+# ------------------------------------------------- cases from a real 20-site test
+def test_rot13_hidden_addresses_are_decoded():
+    page = """<html><body>
+      <a class="enc" data-address="nvnq@nvnq.vg">Email</a>
+      <span data-x="nvnq@crp.vg"></span><span data-x="oehkryyrf@nvnq.vg"></span>
+    </body></html>"""
+    result = scan_site("https://aiad.it", Site({"https://aiad.it": page}))
+    assert {found.email for found in result.emails} == {"aiad@aiad.it", "aiad@pec.it", "bruxelles@aiad.it"}
+    assert all(found.how == "decoded" for found in result.emails)
+
+
+def test_reversed_addresses_are_decoded():
+    page = '<p>Mail: <span style="direction: rtl; unicode-bidi: bidi-override">moc.emca@ofni</span></p>'
+    result = scan_site("https://acme.com", Site({"https://acme.com": page}))
+    assert [found.email for found in result.emails] == ["info@acme.com"]
+
+
+def test_library_author_in_page_code_is_rejected():
+    page = """<html><script>/*! GSAP 3.12 https://gsap.com | jack@greensock.com */ var x=1;</script>
+      <p>Contact: space_technology@4ig.hu</p></html>"""
+    result = scan_site("https://4igsdt.hu", Site({"https://4igsdt.hu": page}))
+    assert [found.email for found in result.emails] == ["space_technology@4ig.hu"]
+    assert ("jack@greensock.com", "Only in page code, other domain") in result.rejected
+
+
+def test_own_domain_address_in_page_code_is_kept():
+    page = '<html><script>var contact = "sales@acme.com";</script></html>'
+    result = scan_site("https://acme.com", Site({"https://acme.com": page}))
+    assert [(f.email, f.how) for f in result.emails] == [("sales@acme.com", "source")]
+
+
+def test_www_in_email_domain_is_removed():
+    result = scan_site("https://www.bagirasys.com", Site({"https://www.bagirasys.com": "info@www.bagirasys.com"}))
+    assert [found.email for found in result.emails] == ["info@bagirasys.com"]
+
+
+@pytest.mark.parametrize("status", [401, 451])
+def test_access_denied_statuses_are_blocked(status):
+    site = Site({"https://rbc.ru": "Unauthorized"}, {"https://rbc.ru": status})
+    result = scan_site("https://rbc.ru", site)
+    assert result.status == BLOCKED and str(status) in result.error
+
+
+def test_slow_server_is_not_retried_with_variants():
+    class Slow(Site):
+        def fetch(self, url, quick=False):
+            self.requested.append(url)
+            return FetchResult(url, error="Read timed out")
+
+    slow = Slow({})
+    result = scan_site("https://bsvt.by/en/", slow)
+    assert result.status == FAILED
+    assert slow.requested == ["https://bsvt.by/en/"]
+
+
+# ------------------------------------------------------------ many languages
+@pytest.mark.parametrize(
+    ("href", "text"),
+    [
+        ("/contatti", "Contatti"),
+        ("/contacto", "Contáctenos"),
+        ("/nous-contacter", "Nous contacter"),
+        ("/kontakty", "Kontakty"),
+        ("/kapcsolat", "Kapcsolat"),
+        ("/kontaktai", "Kontaktai"),
+        ("/contacts", "Контакты"),
+        ("/kontakti", "Контакти"),
+        ("/sub/contact", "연락처"),
+        ("/inquiry", "お問い合わせ"),
+        ("/about/contact", "联系我们"),
+        ("/contact", "צור קשר"),
+        ("/contact", "اتصل بنا"),
+        ("/epikoinonia", "Επικοινωνία"),
+        ("/lien-he", "Liên hệ"),
+    ],
+)
+def test_contact_pages_in_many_languages(href, text):
+    assert score_link(href, text, ALL) >= 100
+
+
+def test_russian_requisites_and_japanese_company_profile_are_useful():
+    assert score_link("/rekvizity", "Реквизиты", ALL) >= 60
+    assert score_link("/company", "会社概要", ALL) >= 60
+
+
+@pytest.mark.parametrize(
+    ("lang", "url", "first"),
+    [
+        ("ko-KR", "https://www.bontech.kr", "ko"),
+        (None, "https://www.bontech.kr", "ko"),
+        ("it", "https://aiad.it", "it"),
+        (None, "https://bsvt.by/en/", "ru"),
+        ("uk", "https://firm.com.ua", "ru"),
+        ("hu-HU", "https://4igsdt.hu", "hu"),
+        ("sv-SE", "https://firma.se", "nordic"),
+    ],
+)
+def test_detect_more_languages(lang, url, first):
+    assert detect_languages(lang, url)[0] == first
+
+
+def test_korean_site_finds_contact_page():
+    site = Site({
+        "https://www.bontech.kr": '<html lang="ko"><a href="/sub/sub05_01.php">회사소개</a>'
+                                  '<a href="/sub/sub05_03.php">오시는 길</a><a href="/sub/sub04_01.php">제품</a></html>',
+        "https://www.bontech.kr/sub/sub05_03.php": "주소 ... 이메일: sales@bontech.kr",
+    })
+    result = scan_site("https://www.bontech.kr", site)
+    assert [found.email for found in result.emails] == ["sales@bontech.kr"]
+
+
+def test_international_guess_paths():
+    urls = guess_urls("https://firma.it/", ("it", "en"))
+    assert urls[0] == "https://firma.it/contatti"
+    assert "https://firma.it/en/contact" in urls

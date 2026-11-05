@@ -196,6 +196,10 @@ def normalize_email(raw: str) -> str | None:
     match = _SYNTAX.match(email)
     if not match or len(match.group("local")) > 64:
         return None
+    domain = match.group("domain")
+    # "info@www.firma.com" is a common typo on websites; mail goes to the bare domain.
+    if domain.startswith("www.") and domain.count(".") >= 2:
+        email = f"{match.group('local')}@{domain[4:]}"
     return email
 
 

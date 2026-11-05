@@ -106,6 +106,7 @@ STATUS_COLORS = {
 RETRYABLE = (FAILED, BLOCKED)
 HOW_LABELS = {
     "structured": "Site data (schema.org)",
+    "decoded": "Hidden (decoded)",
     "link": "mailto link",
     "protected": "Cloudflare-protected",
     "text": "Page text",

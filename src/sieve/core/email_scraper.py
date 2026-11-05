@@ -20,6 +20,7 @@ network and so every site can use its own proxy.
 
 from __future__ import annotations
 
+import codecs
 import heapq
 import re
 import threading
@@ -42,6 +43,7 @@ from sieve.core.site_discovery import (
     parse_sitemap,
     same_site,
     score_link,
+    site_key,
     sitemaps_from_robots,
     structured_emails,
     toggle_www,
@@ -69,7 +71,15 @@ STRONG_PAGE = 90
 WEAK_PAGE = 30
 
 _SCRIPT_HINTS = ("contact", "email", "mail", "kontakt", "iletisim", "config", "app", "main")
-_CONNECTION_ERRORS = ("connect", "ssl", "timed out", "timeout", "max retries", "domain not found")
+# Errors where another address variant (http://, www.) may work. A read timeout
+# means the server was reached but is slow, so trying variants only wastes time.
+_CONNECTION_ERRORS = (
+    "could not connect", "connection timed out", "connection refused", "ssl",
+    "domain not found", "connecttimeout", "newconnectionerror",
+)
+_ACCESS_DENIED = {401: "Access denied", 403: "Access denied", 451: "Unavailable for legal reasons"}
+#: Where an address was found; addresses only seen in page code are treated with suspicion.
+_CODE_SOURCES = ("source", "script")
 
 
 class ScrapeCancelledError(Exception):
@@ -204,6 +214,10 @@ def parse_page(html: str, page_url: str, languages: tuple[str, ...] | None = Non
         scored[target] = max(score, scored.get(target, 0))
 
     candidates += [(email, "text") for email in find_emails(visible)]
+    # Text written backwards and flipped with CSS (direction: rtl) to hide it from bots.
+    for email in find_emails(visible[::-1]):
+        if same_site("https://" + email.rsplit("@", 1)[-1], page_url):
+            candidates.append((email, "decoded"))
     candidates += [(email, "source") for email in find_emails(html)]
 
     scripts: list[str] = []
@@ -285,17 +299,61 @@ class _SiteScan:
         self._visited.add(url.rstrip("/"))
         return self._fetcher.fetch(url, quick=quick)
 
+    def _reject(self, email: str, reason: str) -> None:
+        if email not in self._rejected_seen:
+            self._rejected_seen.add(email)
+            self.result.rejected.append((email, reason))
+
+    def _site_key(self) -> str:
+        return site_key(self.result.final_url or self.result.site)
+
+    def _decode_obfuscated(self, candidates: list[tuple[str, str]]) -> list[tuple[str, str]]:
+        """Undo ROT13 and reversed-text tricks some sites use to hide addresses.
+
+        A decoded address is only trusted if it belongs to the site itself (or, for
+        ROT13 once the page is known to use it, if its username is the site's name).
+        """
+        own = self._site_key()
+        own_name = own.split(".")[0]
+        decoded: list[tuple[str, str]] = []
+        uses_rot13 = False
+        for raw, _how in candidates:
+            email = normalize_email(raw)
+            if email and site_key(email.split("@", 1)[1]) != own:
+                rot = normalize_email(codecs.encode(email, "rot13"))
+                if rot and site_key(rot.split("@", 1)[1]) == own:
+                    uses_rot13 = True
+        for raw, how in candidates:
+            email = normalize_email(raw)
+            if not email or site_key(email.split("@", 1)[1]) == own:
+                decoded.append((raw, how))
+                continue
+            rot = normalize_email(codecs.encode(email, "rot13")) if uses_rot13 else None
+            rev = normalize_email(email[::-1])
+            if rot and (site_key(rot.split("@", 1)[1]) == own or rot.split("@", 1)[0] == own_name):
+                decoded.append((rot, "decoded"))
+            elif rev and site_key(rev.split("@", 1)[1]) == own:
+                decoded.append((rev, "decoded"))
+            else:
+                decoded.append((raw, how))
+        return decoded
+
     def _collect(self, candidates: list[tuple[str, str]], page: str) -> int:
         added = 0
-        for raw, how in candidates:
+        own = self._site_key()
+        for raw, how in self._decode_obfuscated(candidates):
+            if how in _CODE_SOURCES:
+                email = normalize_email(raw)
+                if email and site_key(email.split("@", 1)[1]) != own:
+                    # e.g. a JavaScript library author's address in a code comment
+                    self._reject(email, "Only in page code, other domain")
+                    continue
             if self._filter is not None:
                 verdict = self._filter.judge(raw)
                 if verdict is None:
                     continue
                 if not verdict.ok:
-                    if verdict.email not in self._rejected_seen:
-                        self._rejected_seen.add(verdict.email)
-                        self.result.rejected.append((verdict.email, verdict.reason or ""))
+                    self._reject(verdict.email, verdict.reason or "")
                     continue
                 email = verdict.email
             else:
@@ -351,11 +409,11 @@ class _SiteScan:
 
         self.result.final_url = home.url
         html = home.text or ""
-        if is_blocked(home.status, html) or home.status == 403:
+        if is_blocked(home.status, html) or home.status in _ACCESS_DENIED:
             self.result.status = BLOCKED
             self.result.error = (
-                "Access denied (HTTP 403)" if home.status == 403 and not is_blocked(home.status, html)
-                else f"Bot protection or captcha (HTTP {home.status})"
+                f"Bot protection or captcha (HTTP {home.status})" if is_blocked(home.status, html)
+                else f"{_ACCESS_DENIED[home.status]} (HTTP {home.status})"
             )
             self.log("WARN", self.result.error)
             return self._finish()
@@ -479,7 +537,10 @@ class _SiteScan:
 
 
 def _is_connection_error(error: str | None) -> bool:
-    return bool(error) and any(word in error.lower() for word in _CONNECTION_ERRORS)
+    text = (error or "").lower()
+    if not text or "read timed out" in text or "readtimeout" in text:
+        return False
+    return any(word in text for word in _CONNECTION_ERRORS)
 
 
 def scan_site(
