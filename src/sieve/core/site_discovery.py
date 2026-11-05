@@ -1,27 +1,26 @@
 """Understanding a website well enough to find where its contact details are.
 
 Pure functions, no network: language detection, ranking links that lead to
-contact/legal pages in English, Turkish and German, reading schema.org data,
-parsing sitemaps and recognising parked domains, bot-protection pages and
-contact forms.
+contact/legal pages in many languages, reading schema.org data, parsing
+sitemaps and recognising parked domains, bot-protection pages and contact forms.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from urllib.parse import unquote, urljoin, urlsplit
 
-LANGUAGES = ("en", "tr", "de")
-
 # --------------------------------------------------------------- page scoring
-# (pattern, score). Patterns are matched against folded text: lower case,
-# Turkish and German letters replaced by ASCII, separators turned into spaces.
-# A page that legally or by convention carries an email address scores highest.
+# (pattern, score) per language. Patterns are matched against folded text: lower
+# case, accents removed, separators turned into spaces. A page that legally or by
+# convention carries an email address scores highest. English, Turkish and German
+# are covered most thoroughly; the others cover the usual contact/legal/about pages.
 _RULES: dict[str, list[tuple[str, int]]] = {
     "en": [
-        (r"contact(?: us)?|get in touch|reach us|write to us|contact information", 100),
+        (r"contacts?(?: us)?|get in touch|reach us|write to us|contact information", 100),
         (r"imprint|legal notice|legal information|site notice", 70),
         (r"privacy(?: policy| notice)?|data protection|gdpr", 40),
         (r"about(?: us)?|our company|who we are|company|team", 30),
@@ -42,30 +41,111 @@ _RULES: dict[str, list[tuple[str, int]]] = {
         (r"uber uns|ueber uns|unternehmen|wir uber uns|team", 30),
         (r"kundenservice|hilfe|support", 25),
     ],
+    "fr": [
+        (r"contactez nous|nous contacter|contact", 100),
+        (r"mentions legales", 70),
+        (r"politique de confidentialite", 40),
+        (r"a propos|qui sommes nous|notre societe", 30),
+    ],
+    "it": [
+        (r"contatti|contattaci|contattateci|contatto", 100),
+        (r"note legali", 60),
+        (r"chi siamo|azienda", 30),
+    ],
+    "es": [
+        (r"contacto|contactenos|contactanos|contactar", 100),
+        (r"aviso legal", 70),
+        (r"politica de privacidad", 40),
+        (r"quienes somos|sobre nosotros|empresa", 30),
+    ],
+    "pt": [
+        (r"contato|contacto|contactos|fale conosco|fale connosco", 100),
+        (r"quem somos|sobre nos|empresa", 30),
+    ],
+    "nl": [
+        (r"neem contact op|contact", 100),
+        (r"colofon", 60),
+        (r"over ons", 30),
+    ],
+    "pl": [(r"kontakty?", 100), (r"o nas|o firmie", 30), (r"polityka prywatnosci", 40)],
+    "cs": [(r"kontakty?", 100), (r"o nas|o spolecnosti|o firme", 30)],
+    "hu": [
+        (r"kapcsolat|elerhetosegek?|kapcsolatfelvetel", 100),
+        (r"impresszum", 70),
+        (r"adatvedelem", 40),
+        (r"rolunk|cegunkrol", 30),
+    ],
+    "ro": [(r"contact|contacteaza ne", 100), (r"despre noi", 30)],
+    "sh": [(r"kontakti?|kontaktirajte nas", 100), (r"o nama|o nas", 30)],
+    "lt": [(r"kontaktai", 100), (r"apie mus|apie imone", 30)],
+    "lv": [(r"kontakti", 100), (r"par mums|par uznemumu", 30)],
+    "et": [(r"kontakt", 100), (r"meist|ettevottest", 30)],
+    "nordic": [
+        (r"kontakt(?:a oss| os| oss)?|ota yhteytta|yhteystiedot", 100),
+        (r"om oss|om os|om foretaget|meista|yritys", 30),
+    ],
+    "ru": [
+        (r"контакты|контакт|контакти|связаться с нами|свяжитесь с нами|обратная связь|"
+         r"зв.язатися|звязок", 100),
+        (r"реквизиты", 60),
+        (r"о компании|о нас|за нас|за компанията|про нас|про компанію", 30),
+    ],
+    "el": [(r"επικοινωνια", 100), (r"σχετικα με εμας|εταιρεια", 30)],
+    "he": [(r"צור קשר|יצירת קשר", 100), (r"אודות", 30)],
+    "ar": [(r"اتصل بنا|تواصل معنا|اتصال", 100), (r"من نحن", 30)],
+    "vi": [(r"lien he", 100), (r"gioi thieu|ve chung toi", 30)],
+    "id": [(r"hubungi kami|kontak", 100), (r"tentang kami", 30)],
 }
+# Scripts without spaces between words: matched without word boundaries.
+_UNBOUNDED_RULES: dict[str, list[tuple[str, int]]] = {
+    "ko": [(r"연락처|문의|고객센터|오시는 ?길|찾아오시는 ?길", 100), (r"회사소개|회사 소개", 30)],
+    "ja": [(r"お問い合わせ|お問合せ|問い合わせ|問合せ|連絡先", 100), (r"会社概要", 60), (r"会社案内|企業情報", 30)],
+    "zh": [(r"联系我们|聯繫我們|聯絡我們|联系方式|聯絡方式", 100), (r"关于我们|關於我們|公司简介|公司簡介", 30)],
+}
+
+LANGUAGES = tuple(_RULES) + tuple(_UNBOUNDED_RULES)
+
 _NEGATIVE = re.compile(
-    r"\b(products?|shop|store|cart|basket|checkout|category|categories|blog|news|article|"
-    r"login|log in|register|sign up|account|careers?|jobs?|"
+    r"\b(products?|shop|store|cart|basket|checkout|category|categories|catalog(?:ue)?|blog|news|"
+    r"article|login|log in|register|sign up|account|careers?|jobs?|"
     r"urun(?:ler)?|sepet|kategori|haber(?:ler)?|giris|uye ol|kariyer|"
-    r"produkte?|warenkorb|kategorie|aktuelles|anmelden|registrieren|karriere|stellen)\b"
+    r"produkte?|warenkorb|kategorie|aktuelles|anmelden|registrieren|karriere|stellen|"
+    r"produits|prodotti|productos|produtos|produkty|termekek|actualites|notizie|noticias|novinky|"
+    r"продукция|товары|каталог|новости)\b"
 )
 _FILE_LINK = re.compile(r"\.(?:pdf|jpe?g|png|gif|webp|svg|zip|rar|docx?|xlsx?|pptx?|mp4|mp3)(?:$|[?#])", re.I)
 
-_COMPILED = {
-    language: [(re.compile(rf"\b(?:{pattern})\b"), score) for pattern, score in rules]
-    for language, rules in _RULES.items()
-}
-
 _FOLD = str.maketrans({
-    "ı": "i", "İ": "i", "ş": "s", "Ş": "s", "ç": "c", "Ç": "c", "ğ": "g", "Ğ": "g",
-    "ö": "o", "Ö": "o", "ü": "u", "Ü": "u", "ä": "a", "Ä": "a", "ß": "ss", "â": "a", "î": "i",
+    "ı": "i", "İ": "i", "ß": "ss", "ł": "l", "Ł": "l", "ø": "o", "Ø": "o", "đ": "d", "Đ": "d",
+    "æ": "ae", "Æ": "ae", "œ": "oe", "ŀ": "l", "’": " ", "'": " ",
 })
 
 
+def strip_accents(text: str) -> str:
+    """Remove accents and diacritics (é→e, ş→s, ü→u, ą→a, й→и) and lower-case."""
+    text = text.translate(_FOLD)
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).lower()
+
+
 def fold(text: str) -> str:
-    """Lower-case, map Turkish/German letters to ASCII, turn separators into spaces."""
-    text = unquote(text).translate(_FOLD).lower()
+    """Lower-case, remove accents, turn separators into spaces."""
+    text = strip_accents(unquote(text))
     return re.sub(r"[\s/_\-.+%]+", " ", text).strip()
+
+
+def _compile(rules: dict[str, list[tuple[str, int]]], bounded: bool) -> dict:
+    compiled = {}
+    for language, items in rules.items():
+        compiled[language] = []
+        for pattern, score in items:
+            pattern = strip_accents(pattern)
+            regex = rf"(?<!\w)(?:{pattern})(?!\w)" if bounded else pattern
+            compiled[language].append((re.compile(regex), score))
+    return compiled
+
+
+_COMPILED = {**_compile(_RULES, True), **_compile(_UNBOUNDED_RULES, False)}
 
 
 def score_link(href: str, text: str, languages: tuple[str, ...]) -> int:
@@ -87,12 +167,33 @@ def score_link(href: str, text: str, languages: tuple[str, ...]) -> int:
 
 
 # ------------------------------------------------------------------ language
-_TLD_LANGUAGE = {"tr": "tr", "de": "de", "at": "de", "ch": "de", "li": "de"}
-
+_TLD_LANGUAGE = {
+    "tr": "tr", "de": "de", "at": "de", "ch": "de", "li": "de", "fr": "fr", "be": "fr",
+    "it": "it", "es": "es", "mx": "es", "ar": "es", "cl": "es", "co": "es", "pe": "es",
+    "pt": "pt", "br": "pt", "nl": "nl", "pl": "pl", "cz": "cs", "sk": "cs", "hu": "hu",
+    "ro": "ro", "md": "ro", "hr": "sh", "rs": "sh", "si": "sh", "ba": "sh", "me": "sh",
+    "lt": "lt", "lv": "lv", "ee": "et", "se": "nordic", "no": "nordic", "dk": "nordic",
+    "fi": "nordic", "ru": "ru", "by": "ru", "ua": "ru", "bg": "ru", "kz": "ru",
+    "gr": "el", "cy": "el", "il": "he", "sa": "ar", "ae": "ar", "eg": "ar", "qa": "ar",
+    "kw": "ar", "jo": "ar", "vn": "vi", "id": "id", "my": "id", "kr": "ko", "jp": "ja",
+    "cn": "zh", "tw": "zh", "hk": "zh",
+}
+# Declared page languages that share a rule set.
+_LANGUAGE_ALIASES = {
+    "sk": "cs", "hr": "sh", "sr": "sh", "sl": "sh", "bs": "sh", "uk": "ru", "bg": "ru",
+    "be": "ru", "kk": "ru", "sv": "nordic", "no": "nordic", "nb": "nordic", "nn": "nordic",
+    "da": "nordic", "fi": "nordic", "ms": "id", "iw": "he",
+}
 
 # Letters are matched case-sensitively: with IGNORECASE, "ı" would also match "I".
 _TR_HINT = re.compile(r"[şğıŞĞİ]|\b(?:ve|ile|için|hakkımızda|iletişim|ürünler)\b")
 _DE_HINT = re.compile(r"[äßÄ]|\b(?:und|der|die|das|für|über uns|Impressum|Kontakt)\b")
+
+
+def _language_code(code: str) -> str | None:
+    code = (code or "").strip().lower().replace("_", "-").split("-")[0]
+    code = _LANGUAGE_ALIASES.get(code, code)
+    return code if code in LANGUAGES else None
 
 
 def detect_languages(html_lang: str | None, url: str, text: str = "") -> tuple[str, ...]:
@@ -102,9 +203,9 @@ def detect_languages(html_lang: str | None, url: str, text: str = "") -> tuple[s
     then a quick look at the text.
     """
     found: list[str] = []
-    code = (html_lang or "").strip().lower()[:2]
-    if code in LANGUAGES:
-        found.append(code)
+    declared = _language_code(html_lang or "")
+    if declared:
+        found.append(declared)
     host = urlsplit(url).hostname or ""
     by_tld = _TLD_LANGUAGE.get(host.rsplit(".", 1)[-1])
     if by_tld and by_tld not in found:
@@ -119,14 +220,39 @@ def detect_languages(html_lang: str | None, url: str, text: str = "") -> tuple[s
     return tuple(found)
 
 
+_INTERNATIONAL = ("/en/contact", "/en/contacts", "/en/contact-us", "/contacts")
 _GUESS_PATHS = {
-    "en": ("/contact", "/contact-us", "/about", "/about-us", "/imprint", "/legal", "/privacy-policy"),
+    "en": ("/contact", "/contact-us", "/contacts", "/about", "/about-us", "/imprint", "/legal",
+           "/privacy-policy"),
     "tr": ("/iletisim", "/bize-ulasin", "/hakkimizda", "/kvkk", "/kunye", "/tr/iletisim"),
     "de": ("/impressum", "/kontakt", "/datenschutz", "/ueber-uns", "/de/impressum", "/de/kontakt"),
+    "fr": ("/contact", "/nous-contacter", "/mentions-legales", *_INTERNATIONAL),
+    "it": ("/contatti", "/contattaci", "/chi-siamo", *_INTERNATIONAL),
+    "es": ("/contacto", "/aviso-legal", *_INTERNATIONAL),
+    "pt": ("/contato", "/contacto", *_INTERNATIONAL),
+    "nl": ("/contact", "/over-ons", *_INTERNATIONAL),
+    "pl": ("/kontakt", "/o-nas", *_INTERNATIONAL),
+    "cs": ("/kontakt", "/kontakty", *_INTERNATIONAL),
+    "hu": ("/kapcsolat", "/impresszum", "/elerhetoseg", *_INTERNATIONAL),
+    "ro": ("/contact", *_INTERNATIONAL),
+    "sh": ("/kontakt", "/kontakti", *_INTERNATIONAL),
+    "lt": ("/kontaktai", *_INTERNATIONAL),
+    "lv": ("/kontakti", *_INTERNATIONAL),
+    "et": ("/kontakt", *_INTERNATIONAL),
+    "nordic": ("/kontakt", "/kontakta-oss", "/yhteystiedot", *_INTERNATIONAL),
+    "ru": ("/contacts", "/kontakty", "/kontakti", "/contact", "/en/contacts", "/en/contact"),
+    "el": ("/contact", "/epikoinonia", *_INTERNATIONAL),
+    "he": ("/contact", "/contact-us", *_INTERNATIONAL),
+    "ar": ("/contact", "/contact-us", *_INTERNATIONAL),
+    "vi": ("/lien-he", "/contact", *_INTERNATIONAL),
+    "id": ("/kontak", "/hubungi-kami", "/contact", *_INTERNATIONAL),
+    "ko": ("/contact", "/sub/contact", *_INTERNATIONAL),
+    "ja": ("/contact", "/inquiry", "/company", *_INTERNATIONAL),
+    "zh": ("/contact", "/contactus", "/about/contact", *_INTERNATIONAL),
 }
 
 
-def guess_urls(final_url: str, languages: tuple[str, ...] = LANGUAGES) -> list[str]:
+def guess_urls(final_url: str, languages: tuple[str, ...] = ("en", "tr", "de")) -> list[str]:
     """Common contact paths for the languages, at the site root and inside the
     folder the site redirected to (e.g. /tr/ or /de/)."""
     parts = urlsplit(final_url)
