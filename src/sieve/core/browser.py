@@ -324,7 +324,7 @@ class BrowserPool:
                 if not _is_challenge(page):
                     status = 200
                     _settle(page, quick=True)
-            result = FetchResult(page.url, text=page.content(), status=status)
+            result = FetchResult(page.url, text=_content(page), status=status)
             state = job.state
             with contextlib.suppress(Exception):
                 state = context.storage_state()
@@ -343,6 +343,20 @@ def _visible_user_agent(browser) -> str | None:
     except Exception:
         return None
     return agent.replace("HeadlessChrome", "Chrome") if agent else None
+
+
+def _content(page) -> str:
+    """The page's HTML; waits out a redirect a bot check starts while we read."""
+    for _ in range(3):
+        try:
+            return page.content()
+        except Exception as exc:
+            if "navigating" not in str(exc):
+                raise
+            with contextlib.suppress(Exception):
+                page.wait_for_load_state("domcontentloaded", timeout=10_000)
+            _settle(page, quick=True)
+    return page.content()
 
 
 def _settle(page, quick: bool) -> None:
