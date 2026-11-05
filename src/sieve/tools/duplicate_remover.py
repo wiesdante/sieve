@@ -258,6 +258,7 @@ class DuplicateRemoverPage(ToolPage):
         panel, body, header = titled_panel("Output")
         self._stats = QLabel()
         self._stats.setObjectName("Stats")
+        self._stats.setWordWrap(True)
         self._stats.setTextFormat(Qt.TextFormat.RichText)
         header.addWidget(self._stats)
         header.addStretch(1)

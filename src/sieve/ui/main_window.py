@@ -114,7 +114,7 @@ class MainWindow(QMainWindow):
         glow.setBlurRadius(16)
         glow.setOffset(0, 0)
         name.setGraphicsEffect(glow)
-        version = QLabel(f"v{__version__} // by {AUTHOR}")
+        version = QLabel(f"v{__version__} // {AUTHOR}")
         version.setObjectName("BrandVersion")
         titles.addWidget(name)
         titles.addWidget(version)

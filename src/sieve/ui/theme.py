@@ -349,6 +349,7 @@ QTableCornerButton::section {{
 }}
 #Stats {{
     color: {TEXT_MUTED};
+    font-size: 8.5pt;
 }}
 QSplitter::handle {{
     background: transparent;
@@ -373,7 +374,6 @@ QPushButton[segment]:checked {{
     background: {ACCENT};
     border-color: {ACCENT};
     color: {BACKGROUND};
-    font-weight: 700;
 }}
 QPushButton[segment]:hover:!checked {{
     color: {ACCENT};

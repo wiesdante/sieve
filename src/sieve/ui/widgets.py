@@ -219,12 +219,12 @@ def command_name(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
 
 
-class BlinkingCursor(QWidget):
-    """The block cursor after the prompt."""
+class BlinkingCursor(QLabel):
+    """The block cursor after the prompt: a ``█`` that blinks."""
 
-    def __init__(self, height: int) -> None:
-        super().__init__()
-        self.setFixedSize(max(8, height // 2), height)
+    def __init__(self) -> None:
+        super().__init__("█")
+        self.setObjectName("PageTitle")
         self._on = True
         self._timer = QTimer(self)
         self._timer.setInterval(530)
@@ -233,16 +233,8 @@ class BlinkingCursor(QWidget):
 
     def _blink(self) -> None:
         self._on = not self._on
-        if self.isVisible():
-            self.update()
-
-    def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
-        if self._on:
-            from sieve.ui import theme
-
-            painter = QPainter(self)
-            painter.fillRect(self.rect(), QColor(theme.ACCENT))
-            painter.end()
+        # Keep the width: an empty label would make the line jump.
+        self.setText("█" if self._on else "\u2007")
 
 
 def prompt_header(title: str, subtitle: str = "") -> QWidget:
@@ -262,8 +254,7 @@ def prompt_header(title: str, subtitle: str = "") -> QWidget:
     heading.setObjectName("PageTitle")
     heading.setTextFormat(Qt.TextFormat.RichText)
     row.addWidget(heading)
-    row.addSpacing(4)
-    row.addWidget(BlinkingCursor(heading.sizeHint().height() - 6), 0, Qt.AlignmentFlag.AlignVCenter)
+    row.addWidget(BlinkingCursor())
     row.addStretch(1)
     layout.addLayout(row)
     if subtitle:

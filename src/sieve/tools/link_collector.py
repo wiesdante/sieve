@@ -357,6 +357,7 @@ class LinkCollectorPage(ToolPage):
 
         self._stats = QLabel()
         self._stats.setObjectName("Stats")
+        self._stats.setWordWrap(True)
         self._stats.setTextFormat(Qt.TextFormat.RichText)
         body.addWidget(self._stats)
 
