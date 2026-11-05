@@ -6,6 +6,14 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-05
+
+### Changed
+
+- Browser mode now uses **your default browser** when it is Chrome, Edge, Brave or Vivaldi.
+  With a browser that cannot be automated (such as Firefox) it uses Chrome, then Edge.
+  The log names the browser a site was opened in.
+
 ## [0.10.0] - 2026-11-05
 
 ### Added
@@ -226,7 +234,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/wiesdante/sieve/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/wiesdante/sieve/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/wiesdante/sieve/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/wiesdante/sieve/compare/v0.7.0...v0.8.0
