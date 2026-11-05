@@ -6,6 +6,38 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-05
+
+### Added
+
+- **Website Finder** — finds companies' own websites by searching their names on DuckDuckGo.
+  - Never takes a company's social media, marketplace, directory, news, job-site, map or
+    website-builder page (`name.wixsite.com`, `name.business.site`…) for its website.
+    Each kind can be switched off, and your own block lists are saved between sessions.
+  - Keeps a result only when it belongs to the company: the domain is spelled by the
+    company's name (legal endings such as Ltd., A.Ş. or GmbH ignored), its initials or the
+    start of its words (Bird Aerosystems → birdaero.com), or the site's home page title
+    names the company (TUSAŞ → tusas.com). The name's leading word must be in the domain,
+    so Bird Aerosystems is never aerosystems.com.
+  - Close but uncertain candidates are shown as **Unsure** and never mixed into the list.
+  - Looks at the first 10 real results and skips ads; reports the site's home page.
+  - Recognises DuckDuckGo's bot checks and rate limits, waits and retries, and reports
+    **Rate limited** instead of "no website". Only DuckDuckGo's own "No results" counts as
+    an empty search.
+  - Spreads searches over the proxies from Settings, each resting between searches; a
+    rate-limited proxy rests longer and a proxy that keeps failing is dropped. Works without
+    proxies too, more slowly.
+  - Every company keeps its website side by side in the table, in the order entered; the
+    same website found for two companies is pointed out. **Checked results** shows every
+    result and why it was taken or skipped.
+
+### Changed
+
+- The sidebar lists the scraping tools in the order they are used: Website Finder,
+  Link Collector, Email Scraper.
+- Domains like `mod.gov.sk` or `depo.gov.pk` are now recognised as separate sites, not as
+  part of `gov.sk` or `gov.pk`.
+
 ## [0.11.1] - 2026-11-05
 
 ### Removed
@@ -320,7 +352,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/wiesdante/sieve/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/wiesdante/sieve/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/wiesdante/sieve/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/wiesdante/sieve/compare/v0.10.2...v0.10.3

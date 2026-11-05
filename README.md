@@ -28,6 +28,7 @@ and every tool shares the same settings, proxy pool and logging.
 | **Duplicate Remover** | Removes repeated lines from pasted text while keeping the first occurrence and the original order. |
 | **Keyword Filter** | Keeps or removes lines that contain any keyword from a saved blacklist or whitelist. |
 | **Text Stripper** | Removes saved phrases such as labels and prefixes (`Email: `, `Phone: `) from every line. |
+| **Website Finder** | Finds companies' own websites by searching their names on DuckDuckGo. Skips social media, marketplaces, directories, news, job and map sites and website-builder profiles, and keeps a result only when it matches the company's name. Recognises rate limits instead of reporting "no website". |
 | **Link Collector** | Collects the links on a list of pages (directories, exhibitor lists, search results): other sites only or one home page per site, skips social and file links, saved exclude rules. |
 | **Link & Email Extractor** | Collects web links or email addresses from PDF files (clickable links and text) or pasted text. |
 
