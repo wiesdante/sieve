@@ -14,11 +14,13 @@ def all_tools() -> list[Tool]:
     from sieve.tools.duplicate_remover import DuplicateRemoverTool
     from sieve.tools.email_scraper import EmailScraperTool
     from sieve.tools.keyword_filter import KeywordFilterTool
+    from sieve.tools.link_collector import LinkCollectorTool
     from sieve.tools.link_extractor import LinkExtractorTool
     from sieve.tools.text_stripper import TextStripperTool
 
     return [
         EmailScraperTool(),
+        LinkCollectorTool(),
         LinkExtractorTool(),
         DuplicateRemoverTool(),
         KeywordFilterTool(),

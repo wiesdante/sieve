@@ -7,6 +7,10 @@ on:
       sites:
         description: "Sites, separated by spaces"
         required: true
+      extra:
+        description: "Extra options, e.g. --links --pages 3 --external --home"
+        required: false
+        default: ""
       browser:
         description: "Browser mode"
         default: smart
@@ -32,5 +36,6 @@ jobs:
         env:
           SITES: ${{ inputs.sites }}
           BROWSER: ${{ inputs.browser }}
+          EXTRA: ${{ inputs.extra }}
         shell: bash
-        run: python scripts/live_check.py --browser "$BROWSER" $SITES
+        run: python scripts/live_check.py --browser "$BROWSER" $EXTRA $SITES

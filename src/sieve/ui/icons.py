@@ -126,6 +126,14 @@ def _mail(p: QPainter) -> None:
     p.drawPath(path)
 
 
+def _globe(p: QPainter) -> None:
+    p.drawEllipse(QPointF(12, 12), 8.5, 8.5)
+    p.drawEllipse(QPointF(12, 12), 3.8, 8.5)
+    p.drawLine(QPointF(3.5, 12), QPointF(20.5, 12))
+    p.drawLine(QPointF(5, 7.5), QPointF(19, 7.5))
+    p.drawLine(QPointF(5, 16.5), QPointF(19, 16.5))
+
+
 def _tool(p: QPainter) -> None:
     for x, y in ((4, 4), (13, 4), (4, 13), (13, 13)):
         p.drawRoundedRect(QRectF(x, y, 7, 7), 1.5, 1.5)
@@ -142,6 +150,7 @@ ICONS: dict[str, Painter] = {
     "eraser": _eraser,
     "link": _link,
     "mail": _mail,
+    "globe": _globe,
     "tool": _tool,
 }
 

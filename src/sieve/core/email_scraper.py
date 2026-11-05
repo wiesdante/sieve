@@ -23,11 +23,9 @@ from __future__ import annotations
 import codecs
 import heapq
 import logging
-import queue
 import re
 import threading
 import time
-from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from http import HTTPStatus
@@ -36,6 +34,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 
 from sieve.core.email_filter import EmailFilter, normalize_email, prepare_text
 from sieve.core.link_extractor import find_emails
+from sieve.core.parallel import run_parallel
 from sieve.core.site_discovery import (
     LANGUAGES,
     detect_languages,
@@ -751,66 +750,33 @@ def scrape_sites(
     according to ``options.browser``."""
     options = options or ScrapeOptions()
     summary = ScrapeSummary()
-    workers = max(1, min(options.workers, len(sites) or 1))
-    pending = deque(enumerate(sites))
-    finished: queue.Queue[tuple[int, SiteResult]] = queue.Queue()
-    #: index -> (site, start time). Sites are scanned on daemon threads so that a site
-    #: stuck in a network call can be given up without blocking the run or app exit.
-    running: dict[int, tuple[str, float]] = {}
-    hard_limit = SITE_HARD_LIMIT
-    stop_deadline: float | None = None
+    lock = threading.Lock()
 
-    def start(index: int, site: str) -> None:
-        fetcher = fetcher_for(index)
-        browser = browser_for(index) if browser_for and options.browser != BROWSER_OFF else None
+    def work(index: int, site: str) -> SiteResult:
+        with lock:  # the factories may share state, such as a rotating proxy pool
+            fetcher = fetcher_for(index)
+            browser = browser_for(index) if browser_for and options.browser != BROWSER_OFF else None
+        return scan_site(site, fetcher, email_filter, options, cancelled, browser)
 
-        def work() -> None:
-            try:
-                result = scan_site(site, fetcher, email_filter, options, cancelled, browser)
-            except Exception as exc:  # a bug must not take the whole run down
-                log.exception("Scanning %s failed", site)
-                result = SiteResult(site, FAILED, error=f"Unexpected error: {exc}")
-            finished.put((index, result))
-
-        running[index] = (site, time.monotonic())
-        threading.Thread(target=work, name=f"scrape-{index}", daemon=True).start()
-
-    def report(result: SiteResult) -> None:
+    def report(_index: int, result: SiteResult) -> None:
         summary.results.append(result)
         if progress:
             progress(result, len(sites))
 
-    def fill() -> None:
-        while pending and len(running) < workers:
-            start(*pending.popleft())
+    def give_up(_index: int, site: str, seconds: float) -> SiteResult:
+        stamp = time.strftime("%H:%M:%S")
+        return SiteResult(
+            site, FAILED, error=f"Gave up after {int(seconds)}s (site did not respond)", elapsed=seconds,
+            log=[f"[{stamp}] ERROR   Gave up: the site was still loading after {int(seconds)}s"],
+        )
 
-    fill()
-    while running:
-        try:
-            index, result = finished.get(timeout=0.25)
-        except queue.Empty:
-            pass
-        else:
-            if running.pop(index, None) is not None:
-                report(result)
-        now = time.monotonic()
-        for index, (site, started) in list(running.items()):
-            if now - started > hard_limit:
-                del running[index]
-                stamp = time.strftime("%H:%M:%S")
-                report(SiteResult(
-                    site, FAILED, error=f"Gave up after {int(now - started)}s (site did not respond)",
-                    elapsed=now - started,
-                    log=[f"[{stamp}] ERROR   Gave up: the site was still loading after {int(now - started)}s"],
-                ))
-        if cancelled and cancelled():
-            summary.stopped = True
-            pending.clear()
-            if stop_deadline is None:
-                stop_deadline = now + STOP_GRACE
-            elif now > stop_deadline:
-                break  # sites still running are left behind; their threads end on their own
-        fill()
+    def on_error(_index: int, site: str, exc: Exception) -> SiteResult:
+        return SiteResult(site, FAILED, error=f"Unexpected error: {exc}")
+
+    summary.stopped = run_parallel(
+        sites, work, options.workers, report, cancelled,
+        hard_limit=SITE_HARD_LIMIT, give_up=give_up, on_error=on_error, stop_grace=STOP_GRACE,
+    )
     return summary
 
 
