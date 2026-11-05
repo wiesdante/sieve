@@ -403,7 +403,7 @@ def test_site_repeating_its_last_page_is_treated_as_the_end():
     site.pages["https://dir.com/list?page=3"] += '<a href="/list?page=4">Next</a>'
     site.pages["https://dir.com/list?page=4"] = site.pages["https://dir.com/list?page=3"]
     result = run_list(site)
-    assert result.pages_read == 4 and result.status == READ
+    assert result.pages_read == 3 and result.status == READ
     assert "repeated" in result.note
     assert len(result.links) == 3
 
@@ -450,6 +450,8 @@ def test_page_range_expands_in_order():
         ("https://dir.com/list?cat=5&page=4", "https://dir.com/list?cat=5&page=3", True),
         ("https://dir.com/list?cat=6&page=4", "https://dir.com/list?cat=5&page=3", False),
         ("https://dir.com/list?page=5", "https://dir.com/list?page=3", False),
+        ("https://dir.com/forms/?page_num=2", "https://dir.com/forms/", True),
+        ("https://dir.com/a?pageNumber=8", "https://dir.com/a?pageNumber=7", True),
     ],
 )
 def test_next_address(link, current, expected):
@@ -462,3 +464,38 @@ def test_more_link_is_followed_by_its_address():
     html = '<a href="https://a.com/">A</a><a href="news?p=2" class="morelink">More</a>'
     info = parse_links(html, "https://news.com/news").pagination
     assert info.next_url == "https://news.com/news?p=2" and info.next_how == "next address"
+
+
+def test_first_page_whose_next_link_points_to_page_one():
+    """scrapethissite.com: page 1 has no number, and its "Next" link goes to ?page_num=1."""
+    pages = {}
+    for number in range(1, 5):
+        numbers = "".join(f'<li><a href="/forms/?page_num={n}">{n}</a></li>' for n in range(1, 5))
+        nxt = f'<li><a href="/forms/?page_num={1 if number == 1 else number + 1}" aria-label="Next">»</a></li>'
+        html = f'<a href="https://team{number}.com/">T{number}</a><ul class="pagination">{numbers}' + (
+            nxt if number < 4 else "") + "</ul>"
+        pages[f"https://site.com/forms/?page_num={number}"] = html
+    pages["https://site.com/forms/"] = pages["https://site.com/forms/?page_num=1"].replace(
+        "?page_num=2\" aria", "?page_num=1\" aria")
+    site = Site(pages)
+    result = collect_links(["https://site.com/forms/"], lambda _i: site,
+                           CollectOptions(max_pages=50, host_interval=0, browser=BROWSER_OFF)).results[0]
+    assert [link.url for link in result.links] == [f"https://team{n}.com/" for n in range(1, 5)]
+    assert result.status == READ and result.pages_read == 4
+    assert "https://site.com/forms/?page_num=1" not in site.requested
+
+
+def test_repeated_page_before_the_stated_end_is_incomplete():
+    site = numbered_site(6)
+    site.pages["https://dir.com/list?page=3"] = site.pages["https://dir.com/list?page=2"].replace(
+        "aria-current=page>2", ">2").replace('page=3">Next', 'page=3">Next')
+    # page 3 serves page 2's content
+    site.pages["https://dir.com/list?page=3"] = site.pages["https://dir.com/list?page=2"]
+    result = run_list(site)
+    assert result.status == PARTIAL and "6 pages" in result.note
+
+
+def test_single_page_is_said_out_loud_when_following_was_asked():
+    site = Site({"https://dir.com/list?page=1": '<a href="https://a.com/">A</a>'})
+    result = run_list(site)
+    assert result.status == READ and result.note == "A single page: no link to a next page was found"

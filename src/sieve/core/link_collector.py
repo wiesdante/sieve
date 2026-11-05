@@ -342,14 +342,14 @@ _PAGER_HINT = re.compile(
     re.IGNORECASE,
 )
 _PAGE_URL = re.compile(
-    r"[?&](?:page|p|pg|paged|pagina|sayfa|seite|pagenum|page_?no|currentpage|pn|start|offset|from)=\d+"
+    r"[?&](?:[\w-]*page[\w-]*|p|pg|pn|pagina|sayfa|seite|strana|strona|start|offset|from)=\d+"
     r"|/(?:page|p|pg|sayfa|seite|pagina|strana|strona|stranica)[/-]?\d+(?:/|$|\.)"
     r"|[-_/]page[-_]?\d+",
     re.IGNORECASE,
 )
 # A page number in an address, for spotting "the same address with the next number".
 _PAGE_NUMBER = re.compile(
-    r"(?P<pre>[?&](?:page|p|pg|paged|pagina|sayfa|seite|pagenum|page_?no|currentpage|pn)=)(?P<n>\d+)"
+    r"(?P<pre>[?&](?:[\w-]*page[\w-]*|p|pg|pn|pagina|sayfa|seite|strana|strona)=)(?P<n>\d+)"
     r"|(?P<pre2>/(?:page|p|pg|sayfa|seite|pagina|strana|strona|stranica)[/-]?)(?P<n2>\d+)",
     re.IGNORECASE,
 )
@@ -371,6 +371,15 @@ def _without_page(url: str) -> str:
     match = list(_PAGE_NUMBER.finditer(url))[-1]
     cut = url[:match.start()] + url[match.end():]
     return cut.replace("?&", "?").rstrip("?&")
+
+
+def same_page(first: str, second: str) -> bool:
+    """``/list?page=1`` and ``/list`` are the same page."""
+    for one, other in ((first, second), (second, first)):
+        page = page_template(one)
+        if page and page[1] == 1 and page_template(other) is None:
+            return link_key(_without_page(one)) == link_key(other)
+    return False
 
 
 def is_next_address(link: str, current: str) -> bool:
@@ -435,13 +444,17 @@ def analyze_pagination(soup, page_url: str, base: str | None = None, visible: st
     here = link_key(page_url)
     info = Pagination()
 
+    def is_here(url: str) -> bool:
+        # "?page=1" is usually the same page as the list without a page number.
+        return link_key(url) == here or same_page(url, page_url)
+
     def usable(href: str | None) -> str | None:
         if not href or href.startswith("#") or href.lower().startswith(_SKIP_SCHEMES):
             return None
         url = urljoin(base, href)
         if urlsplit(url).scheme not in ("http", "https") or site_key(url) != site_key(page_url):
             return None
-        return url if link_key(url) != here else None
+        return None if is_here(url) else url
 
     # Numbered pages and the page marked as current.
     for anchor in soup.find_all("a", href=True):
@@ -450,7 +463,7 @@ def analyze_pagination(soup, page_url: str, base: str | None = None, visible: st
             continue
         url = urljoin(base, anchor["href"])
         if _in_pager(anchor) or _PAGE_URL.search(url):
-            if link_key(url) == here:
+            if is_here(url):
                 info.current = info.current or number
             elif usable(anchor["href"]):
                 info.numbered.setdefault(number, url)
@@ -721,8 +734,17 @@ class _EntryRun:
                 highest = max(highest or 0, info.highest)
             signature = frozenset(link_key(link) for link, _text in parsed.links)
             if previous_links is not None and signature == previous_links:
-                self.log("INFO", f"Page {read} shows the same links as page {read - 1}; treating it as the end")
-                self._finish_pagination(read - 1, highest, "Last page reached (the site repeated its last page)")
+                read -= 1
+                if highest and read < highest:
+                    self._partial(
+                        f"Read {read} pages, but page {read + 1} showed the same links as page {read} "
+                        f"although the list has {highest} pages"
+                    )
+                    self.result.expected_pages = highest
+                else:
+                    self.log("INFO", f"Page {read + 1} shows the same links as page {read}; treating it as the end")
+                    self._finish_pagination(read, highest, f"Last page reached ({read} pages read; "
+                                                           "the site repeated its last page)")
                 break
             previous_links = signature
             kept = self._take_links(parsed, fetched.url)
@@ -792,6 +814,8 @@ class _EntryRun:
         elif read > 1:
             total = f" of {highest}" if highest else ""
             self.result.note = f"Last page reached ({read}{total} pages read)"
+        elif limit > 1:
+            self.result.note = "A single page: no link to a next page was found"
 
     def _take_links(self, parsed: ParsedLinks, page_url: str) -> int:
         settings = self._filter.settings
@@ -805,7 +829,7 @@ class _EntryRun:
         for raw, text in parsed.links:
             self.result.total_links += 1
             url = clean_url(raw, settings.strip_tracking)
-            if link_key(url) == page_key:
+            if link_key(url) == page_key or same_page(url, page_url):
                 continue  # a link to the page itself
             if link_key(url) in pager_keys:
                 continue
