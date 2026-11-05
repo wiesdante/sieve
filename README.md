@@ -40,7 +40,8 @@ and every tool shares the same settings, proxy pool and logging.
 - **Self-updating** — Sieve checks the latest GitHub release on startup and can
   download and install it in place, no manual setup needed.
 - **No dependencies on the target PC** — the installer ships everything, including
-  the Python runtime. Browser automation uses the Microsoft Edge that comes with Windows.
+  the Python runtime. Browser automation uses your default browser
+  (Chrome, Edge, Brave or Vivaldi), or the Microsoft Edge that comes with Windows.
 - **Per-user install** — installs under `%LOCALAPPDATA%`, no administrator rights required.
 
 ## Installation

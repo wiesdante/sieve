@@ -1,4 +1,8 @@
-"""Opening pages in a real browser (Microsoft Edge, already installed on Windows).
+"""Opening pages in a real browser that is already installed on the PC.
+
+The user's default browser is used when it can be automated (Chrome, Edge, Brave,
+Vivaldi and other Chromium-based browsers); otherwise Chrome, then Edge, which
+ships with Windows.
 
 Some sites only show their content after JavaScript runs, and some answer plain
 HTTP requests with a bot check that a real browser passes. ``BrowserPool`` runs a
@@ -11,7 +15,10 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import ntpath
 import queue
+import re
+import sys
 import threading
 import time
 from concurrent.futures import Future
@@ -29,8 +36,81 @@ log = logging.getLogger(__name__)
 
 OFF, SMART, ALWAYS, MODES = BROWSER_OFF, BROWSER_SMART, BROWSER_ALWAYS, BROWSER_MODES
 
-#: Browsers tried in order; Edge ships with Windows 10/11.
-CHANNELS = ("msedge", "chrome")
+
+@dataclass(frozen=True)
+class BrowserChoice:
+    """A browser to launch: a Playwright channel or a Chromium-based executable."""
+
+    name: str
+    channel: str | None = None
+    executable: str | None = None
+
+    @property
+    def supported(self) -> bool:
+        return bool(self.channel or self.executable)
+
+
+CHROME = BrowserChoice("Google Chrome", channel="chrome")
+EDGE = BrowserChoice("Microsoft Edge", channel="msedge")
+#: Tried after the default browser; Edge ships with Windows 10/11.
+FALLBACKS = (CHROME, EDGE)
+
+# Executable name -> (display name, Playwright channel or None to launch the file itself).
+_KNOWN_EXECUTABLES = {
+    "chrome.exe": ("Google Chrome", "chrome"),
+    "msedge.exe": ("Microsoft Edge", "msedge"),
+    "brave.exe": ("Brave", None),
+    "vivaldi.exe": ("Vivaldi", None),
+    "chromium.exe": ("Chromium", None),
+}
+_UNSUPPORTED_EXECUTABLES = {
+    "firefox.exe": "Firefox",
+    "launcher.exe": "Opera",
+    "opera.exe": "Opera",
+    "safari.exe": "Safari",
+}
+
+
+def browser_from_command(command: str) -> BrowserChoice | None:
+    """The browser behind a Windows "open" command such as
+    ``"C:\\...\\chrome.exe" --single-argument %1``."""
+    match = re.match(r'\s*"([^"]+)"|\s*(\S+)', command or "")
+    if not match:
+        return None
+    path = match.group(1) or match.group(2)
+    exe = ntpath.basename(path).lower()
+    if exe in _KNOWN_EXECUTABLES:
+        name, channel = _KNOWN_EXECUTABLES[exe]
+        return BrowserChoice(name, channel=channel) if channel else BrowserChoice(name, executable=path)
+    return BrowserChoice(_UNSUPPORTED_EXECUTABLES.get(exe, ntpath.splitext(ntpath.basename(path))[0]))
+
+
+def default_browser() -> BrowserChoice | None:
+    """The browser Windows opens web links with, or None if it cannot be read."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice",
+        ) as key:
+            prog_id = winreg.QueryValueEx(key, "ProgId")[0]
+        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, rf"{prog_id}\shell\open\command") as key:
+            command = winreg.QueryValueEx(key, "")[0]
+    except OSError:
+        return None
+    return browser_from_command(command)
+
+
+def launch_order(default: BrowserChoice | None) -> list[BrowserChoice]:
+    """The default browser first when it can be automated, then Chrome and Edge."""
+    order = [default] if default and default.supported else []
+    for choice in FALLBACKS:
+        if all(choice.name != item.name for item in order):
+            order.append(choice)
+    return order
 _BLOCKED_RESOURCES = {"image", "media", "font"}
 _CHALLENGE_TITLES = ("just a moment", "attention required", "checking your browser", "please wait")
 
@@ -64,6 +144,8 @@ class BrowserPool:
         self._started = False
         self._closed = False
         self.error: str | None = None
+        #: Name of the browser that was started, once one is running.
+        self.name: str = "the browser"
 
     # ------------------------------------------------------------- lifecycle
     def _start(self) -> None:
@@ -110,13 +192,22 @@ class BrowserPool:
             # Each site sets its own proxy on its context; Chromium wants a launch-level placeholder.
             options["proxy"] = {"server": "http://per-context"}
         last_error: Exception | None = None
-        for channel in CHANNELS:
+        default = default_browser()
+        if default and not default.supported:
+            log.info("Default browser %s cannot be automated; using Chrome or Edge", default.name)
+        for choice in launch_order(default):
             try:
-                return playwright.chromium.launch(channel=channel, **options)
+                if choice.channel:
+                    browser = playwright.chromium.launch(channel=choice.channel, **options)
+                else:
+                    browser = playwright.chromium.launch(executable_path=choice.executable, **options)
             except Exception as exc:
                 last_error = exc
+                continue
+            self.name = choice.name
+            return browser
         raise BrowserUnavailableError(
-            "Microsoft Edge or Google Chrome could not be started"
+            "No supported browser could be started (Chrome, Edge, Brave or Vivaldi)"
             + (f" ({str(last_error).splitlines()[0]})" if last_error else "")
         )
 
@@ -230,6 +321,10 @@ class BrowserFetcher:
     @property
     def available(self) -> bool:
         return self._pool.available
+
+    @property
+    def name(self) -> str:
+        return self._pool.name
 
     def fetch(self, url: str, quick: bool = False) -> FetchResult:
         return self._pool.fetch(url, quick=quick, proxy=self._proxy)

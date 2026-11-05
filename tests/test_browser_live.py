@@ -78,3 +78,10 @@ def test_smart_mode_finds_script_content(server, pool):
     assert result.status == FOUND, result.log
     assert result.via == "browser"
     assert [found.email for found in result.emails] == ["hello@rendered.example.com"]
+
+
+def test_default_browser_is_read_and_named(pool):
+    from sieve.core.browser import default_browser
+
+    default_browser()  # must not raise on Windows
+    assert pool.name in ("Google Chrome", "Microsoft Edge", "Brave", "Vivaldi", "Chromium")

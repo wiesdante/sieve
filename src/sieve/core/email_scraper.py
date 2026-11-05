@@ -624,7 +624,8 @@ def scan_site(
         return first
 
     second = _run_scan(_SiteScan(site, fetcher, email_filter, options, cancelled, browser))
-    log_lines = [*first.log, "── Retrying in the browser", *second.log]
+    browser_name = getattr(browser, "name", "the browser")
+    log_lines = [*first.log, f"── Retrying in {browser_name}", *second.log]
     if second.error.startswith("Browser not available"):
         first.log = [*log_lines]
         first.log.append(f"[{time.strftime('%H:%M:%S')}] WARN    {second.error}")

@@ -109,18 +109,18 @@ STATUS_COLORS = {
 RETRYABLE = (FAILED, BLOCKED)
 BROWSER_CHOICES = (
     (BROWSER_SMART, "Browser: Smart",
-     "Opens a site in Microsoft Edge only when a plain request is blocked,\n"
+     "Opens a site in your browser only when a plain request is blocked,\n"
      "finds nothing, or the page needs JavaScript. Recommended."),
     (BROWSER_ALWAYS, "Browser: Always",
-     "Opens every page in Microsoft Edge. Slowest, but sees what a visitor sees."),
+     "Opens every page in your browser. Slowest, but sees what a visitor sees."),
     (BROWSER_OFF, "Browser: Off", "Plain requests only. Fastest."),
 )
 BROWSER_POOL_LIMIT = 4
 VIA_LABELS = {"http": "Request", "browser": "Browser", "both": "Both tried"}
 VIA_TIPS = {
     "http": "Read with a plain request.",
-    "browser": "Opened in Microsoft Edge.",
-    "both": "Also opened in Microsoft Edge, which found nothing more.",
+    "browser": "Opened in your browser.",
+    "both": "Also opened in your browser, which found nothing more.",
 }
 HOW_LABELS = {
     "structured": "Site data (schema.org)",
@@ -307,7 +307,8 @@ class EmailScraperPage(ToolPage):
         index = self._browser.findData(self._prefs.get("browser", BROWSER_SMART))
         self._browser.setCurrentIndex(max(index, 0))
         self._browser.setToolTip(
-            "When to open sites in Microsoft Edge instead of a plain request.\n"
+            "When to open sites in a real browser instead of a plain request.\n"
+            "Uses your default browser (Chrome, Edge, Brave, Vivaldi), otherwise Chrome or Edge.\n"
             "Smart: only for blocked, empty or JavaScript-only sites."
         )
         self._browser.currentIndexChanged.connect(self._save_options)

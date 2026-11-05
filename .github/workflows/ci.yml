@@ -48,4 +48,4 @@ jobs:
       - name: Test with Microsoft Edge
         env:
           SIEVE_BROWSER_TESTS: "1"
-        run: pytest -q tests/test_browser_live.py tests/test_site_discovery.py
+        run: pytest -q tests/test_browser_live.py tests/test_browser_choice.py tests/test_site_discovery.py
