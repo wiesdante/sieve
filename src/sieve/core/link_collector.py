@@ -687,7 +687,10 @@ class _EntryRun:
                 self._used_browser = True  # keep using it for the following pages
                 return second, second_parsed, None
 
-        if problem and problem[0] == BLOCKED and not self._stopped():
+        overloaded = problem and problem[0] == FAILED and any(
+            f"HTTP {code}" in problem[1] for code in (502, 503, 504)
+        )
+        if problem and (problem[0] == BLOCKED or overloaded) and not self._stopped():
             self._throttle.penalize(host)
             retry_with = self._browser or self._fetcher
             self.log("WARN", f"{problem[1]}; waiting {self._options.host_penalty:.0f}s and trying once more")
@@ -715,6 +718,7 @@ class _EntryRun:
         number: int | None = None  # the page number of the page being read, when known
         current: str | None = url
         read = 0
+        gaps: list[int] = []  # pages that repeated the one before
         while current and not self._stopped():
             visited.add(link_key(current))
             fetched, parsed, problem = self._open(current)
@@ -732,8 +736,15 @@ class _EntryRun:
             number = info.current or (number + 1 if number else None) or (1 if read == 1 else None)
             if info.highest:
                 highest = max(highest or 0, info.highest)
-            signature = frozenset(link_key(link) for link, _text in parsed.links)
-            if previous_links is not None and signature == previous_links:
+            # Identical text means the site served the same page again.
+            signature = frozenset({hash(" ".join(parsed.visible_text.split()))})
+            repeated = previous_links is not None and signature == previous_links
+            if repeated and highest and read <= highest and info.next_url:
+                self.log("WARN", f"Page {read} shows exactly the same as page {read - 1}; "
+                                 f"the list has {highest} pages, so reading on")
+                gaps.append(read)
+                repeated = False
+            if repeated:
                 read -= 1
                 if highest and read < highest:
                     self._partial(
@@ -770,6 +781,10 @@ class _EntryRun:
             current = next_page
 
         self.result.pages_read = read
+        if gaps and self.result.status == READ:
+            pages = ", ".join(str(number) for number in gaps)
+            self._partial(f"Read {read} pages, but page {pages} showed exactly the same as the page before; "
+                          "its own items may be missing")
         if self.result.status == READ and not self.result.links:
             self.result.status = NO_LINKS
             if not self.result.error:
