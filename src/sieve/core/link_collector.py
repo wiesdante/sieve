@@ -10,9 +10,10 @@ For every page in the list the collector:
 2. collects every ``<a href>`` with its text, made absolute and tidied
    (no ``#fragment``, optionally no tracking parameters such as ``utm_source``),
 3. keeps the links that pass the filters: which sites (all, other sites, the same
-   site), social/share/app-store links, file downloads and your own exclude rules,
-4. optionally follows "next page" links (``rel="next"``, "Next", "Sonraki",
-   "Weiter", "»"...) to read the following pages of a paginated list.
+   site), social/share/app-store links, file downloads and your own exclude rules.
+
+Only the pages in the list are read; for a list split over several pages, every
+page is entered separately.
 
 Requests to the same site are spaced out, and a site that blocks is given a longer
 pause and one more try, in the browser when available.
@@ -36,7 +37,7 @@ from sieve.core.email_scraper import (
     looks_js_rendered,
 )
 from sieve.core.parallel import run_parallel
-from sieve.core.site_discovery import fold, is_blocked, site_key, strip_accents
+from sieve.core.site_discovery import is_blocked, site_key
 
 # ------------------------------------------------------------------- options
 ALL = "all"
@@ -46,21 +47,16 @@ SCOPES = (ALL, EXTERNAL, INTERNAL)
 
 #: Results for one page in the list.
 READ = "read"
-#: Some pages of a paginated list were not read (an error, the page limit, or a gap).
-PARTIAL = "partial"
 NO_LINKS = "no_links"
 BLOCKED = "blocked"
 FAILED = "failed"
-STATUSES = (READ, PARTIAL, NO_LINKS, BLOCKED, FAILED)
-#: Longest list a ``{1-50}`` range in the page list may expand to.
-MAX_RANGE = 2000
+STATUSES = (READ, NO_LINKS, BLOCKED, FAILED)
 
-PAGE_CHOICES = (1, 5, 10, 20, 50, 100)
 #: Gap between two requests to the same site, and after it blocked us.
 HOST_INTERVAL = 1.0
 HOST_PENALTY = 6.0
-#: A list page still loading after this long (per page to read) is given up.
-SECONDS_PER_PAGE = 120.0
+#: A page still loading after this long is given up.
+PAGE_HARD_LIMIT = 180.0
 _KNOWN_STATUSES = frozenset(int(status) for status in HTTPStatus)
 _ACCESS_DENIED = {401, 403, 429, 451}
 
@@ -91,19 +87,6 @@ _TRACKING_PARAMS = frozenset({
 })
 _SKIP_SCHEMES = ("javascript:", "mailto:", "tel:", "sms:", "data:", "about:", "callto:", "skype:", "whatsapp:")
 
-# "Next page" link texts in the languages the scraper knows (compared after folding).
-_NEXT_WORDS = (
-    "next", "next page", "next ›", "next »", "next >", "›", "»", ">", "→", "older",
-    "sonraki", "sonraki sayfa", "ileri", "weiter", "nachste", "nachste seite", "vor",
-    "suivant", "page suivante", "siguiente", "successivo", "successiva", "avanti",
-    "proximo", "proxima", "seguinte", "volgende", "nastepna", "dalsi", "kovetkezo",
-    "urmatoarea", "sledeca", "naslednja", "kitas", "nakamais", "jargmine", "nasta", "neste",
-    "naeste", "seuraava", "следующая", "далее", "вперед", "επομενη", "הבא", "التالي",
-    "tiep", "berikutnya", "selanjutnya", "다음", "次へ", "次", "下一页", "下页",
-)
-_NEXT_TEXTS = frozenset(fold(word) for word in _NEXT_WORDS)
-_ARROWS = re.compile(r"[›»>→⟶⇒▶►▸❯〉]+")
-_NEXT_CLASS = re.compile(r"(?:^|[-_\s])next(?:$|[-_\s])", re.IGNORECASE)
 
 
 @dataclass
@@ -153,8 +136,6 @@ class CollectOptions:
     filters: LinkFilterSettings = field(default_factory=LinkFilterSettings)
     workers: int = 5
     browser: str = BROWSER_SMART
-    #: Pages read per list entry: 1 reads only the page itself, more follows "next" links.
-    max_pages: int = 1
     host_interval: float = HOST_INTERVAL
     host_penalty: float = HOST_PENALTY
 
@@ -169,13 +150,13 @@ class Link:
 
 @dataclass
 class PageResult:
-    """The outcome for one entry of the list (with the pages that followed it)."""
+    """The outcome for one page of the list."""
 
     url: str
     status: str = READ
     final_url: str = ""
     pages: int = 0
-    #: Links that passed the filters on these pages (not yet compared with other entries).
+    #: Links that passed the filters on this page (not yet compared with other pages).
     links: list[Link] = field(default_factory=list)
     #: (link, reason) for links the filters dropped.
     rejected: list[tuple[str, str]] = field(default_factory=list)
@@ -184,12 +165,6 @@ class PageResult:
     via: str = "http"
     elapsed: float = 0.0
     log: list[str] = field(default_factory=list)
-    #: Pages of the list read for this entry (``pages`` counts every request).
-    pages_read: int = 0
-    #: How reading the list ended, e.g. "Last page reached" or why pages are missing.
-    note: str = ""
-    #: The number of pages the list itself says it has, when it shows it.
-    expected_pages: int | None = None
 
 
 @dataclass
@@ -270,28 +245,9 @@ class LinkFilter:
 
 # ---------------------------------------------------------------- page parsing
 @dataclass
-class Pagination:
-    """What a page says about the list it belongs to."""
-
-    next_url: str | None = None
-    #: How the next link was recognised: "rel=next", "next link", "page number", "next button".
-    next_how: str = ""
-    #: The page number marked as current, if the page shows one.
-    current: int | None = None
-    #: The highest page number the page links to or states ("Page 3 of 47").
-    highest: int | None = None
-    #: Page number -> link, from numbered pagination links.
-    numbered: dict[int, str] = field(default_factory=dict)
-    #: A "Load more" / "Show more" button: the rest of the list is loaded by script.
-    load_more: bool = False
-
-
-@dataclass
 class ParsedLinks:
     links: list[tuple[str, str]]
-    next_page: str | None
     visible_text: str
-    pagination: Pagination = field(default_factory=Pagination)
 
 
 def _anchor_text(anchor) -> str:
@@ -306,7 +262,7 @@ def _anchor_text(anchor) -> str:
 
 
 def parse_links(html: str, page_url: str) -> ParsedLinks:
-    """Every link on the page, made absolute, with its text; plus the next page, if any."""
+    """Every link on the page, made absolute, with its text."""
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(html or "", "html.parser")
@@ -325,218 +281,7 @@ def parse_links(html: str, page_url: str) -> ParsedLinks:
         links.append((url, _anchor_text(anchor)))
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
-    visible = soup.get_text(" ", strip=True)
-    pagination = analyze_pagination(soup, page_url, base, visible)
-    return ParsedLinks(links, pagination.next_url, visible, pagination)
-
-
-def find_next_page(soup, page_url: str, base: str | None = None) -> str | None:
-    """The "next page" link of a paginated list, on the same site."""
-    return analyze_pagination(soup, page_url, base).next_url
-
-
-# Where pagination usually lives, and URLs that carry a page number.
-_PAGER_HINT = re.compile(
-    r"paginat|pager|paging|page-?numbers|page-?nav|pages-?nav|pagelist|page-?links|wp-pagenavi|"
-    r"page navigation|sayfalama|seitennavigation|strankovani|stronicowanie|paginazione|paginacion",
-    re.IGNORECASE,
-)
-_PAGE_URL = re.compile(
-    r"[?&](?:[\w-]*page[\w-]*|p|pg|pn|pagina|sayfa|seite|strana|strona|start|offset|from)=\d+"
-    r"|/(?:page|p|pg|sayfa|seite|pagina|strana|strona|stranica)[/-]?\d+(?:/|$|\.)"
-    r"|[-_/]page[-_]?\d+",
-    re.IGNORECASE,
-)
-# A page number in an address, for spotting "the same address with the next number".
-_PAGE_NUMBER = re.compile(
-    r"(?P<pre>[?&](?:[\w-]*page[\w-]*|p|pg|pn|pagina|sayfa|seite|strana|strona)=)(?P<n>\d+)"
-    r"|(?P<pre2>/(?:page|p|pg|sayfa|seite|pagina|strana|strona|stranica)[/-]?)(?P<n2>\d+)",
-    re.IGNORECASE,
-)
-
-
-def page_template(url: str) -> tuple[str, int] | None:
-    """("https://x.com/list?page={}", 3) for https://x.com/list?page=3."""
-    matches = list(_PAGE_NUMBER.finditer(url))
-    if not matches:
-        return None
-    match = matches[-1]
-    group = "n" if match.group("n") is not None else "n2"
-    start, end = match.span(group)
-    return url[:start] + "{}" + url[end:], int(match.group(group))
-
-
-def _without_page(url: str) -> str:
-    """The address with its page number removed: the list's first page."""
-    match = list(_PAGE_NUMBER.finditer(url))[-1]
-    cut = url[:match.start()] + url[match.end():]
-    return cut.replace("?&", "?").rstrip("?&")
-
-
-def same_page(first: str, second: str) -> bool:
-    """``/list?page=1`` and ``/list`` are the same page."""
-    for one, other in ((first, second), (second, first)):
-        page = page_template(one)
-        if page and page[1] == 1 and page_template(other) is None:
-            return link_key(_without_page(one)) == link_key(other)
-    return False
-
-
-def is_next_address(link: str, current: str) -> bool:
-    """The link is the current address with the page number one higher."""
-    link_page = page_template(link)
-    if link_page is None:
-        return False
-    current_page = page_template(current)
-    if current_page is not None:
-        return link_page[0].lower() == current_page[0].lower() and link_page[1] == current_page[1] + 1
-    return link_page[1] == 2 and link_key(_without_page(link)) == link_key(current)
-
-
-_CURRENT_CLASS = re.compile(r"(?:^|[-_\s])(?:active|current|selected|is-active|is-current)(?:$|[-_\s])", re.I)
-_PAGE_OF = re.compile(
-    r"\b(?:page|sayfa|seite|pagina|strona|stranka|страница|σελιδα)\s*(\d{1,4})\s*"
-    r"(?:of|/|von|de|di|z|из|από|\u2215)\s*(\d{1,4})\b"
-)
-_ITEMS_OF = re.compile(
-    r"(\d[\d.,]{0,8})\s*[-–]\s*(\d[\d.,]{0,8})\s*(?:of|von|de|di|из)\s*(\d[\d.,]{0,9})"
-    r"\s*(?:\w+\s+){0,2}?(?:results?|items?|products?|entries|records|companies|exhibitors|members|"
-    r"listings|ergebnisse[n]?|eintrage[n]?|resultados?|risultati|resultats|sonuc|kayit|firma)"
-)
-_LOAD_MORE = frozenset(fold(text) for text in (
-    "load more", "show more", "more results", "view more", "see more", "daha fazla", "daha fazla goster",
-    "daha fazla yukle", "mehr laden", "mehr anzeigen", "weitere laden", "voir plus", "charger plus",
-    "cargar mas", "ver mas", "carica altro", "mostra altro", "carregar mais", "meer laden",
-    "показать еще", "загрузить еще", "더보기", "もっと見る", "加载更多",
-))
-
-
-def _in_pager(tag) -> bool:
-    node = tag
-    for _ in range(5):
-        if node is None or not hasattr(node, "get"):
-            return False
-        attributes = " ".join(
-            str(value) for value in (
-                " ".join(node.get("class") or []), node.get("id") or "", node.get("aria-label") or "",
-                node.get("role") or "",
-            )
-        )
-        if _PAGER_HINT.search(attributes):
-            return True
-        node = node.parent
-    return False
-
-
-def _number(text: str) -> int | None:
-    text = text.strip()
-    return int(text) if text.isdigit() and 0 < len(text) <= 4 and int(text) > 0 else None
-
-
-def _plain_int(text: str) -> int | None:
-    digits = re.sub(r"[.,]", "", text)
-    return int(digits) if digits.isdigit() else None
-
-
-def analyze_pagination(soup, page_url: str, base: str | None = None, visible: str | None = None) -> Pagination:
-    """Find the next page of a paginated list and how many pages the list has."""
-    base = base or page_url
-    here = link_key(page_url)
-    info = Pagination()
-
-    def is_here(url: str) -> bool:
-        # "?page=1" is usually the same page as the list without a page number.
-        return link_key(url) == here or same_page(url, page_url)
-
-    def usable(href: str | None) -> str | None:
-        if not href or href.startswith("#") or href.lower().startswith(_SKIP_SCHEMES):
-            return None
-        url = urljoin(base, href)
-        if urlsplit(url).scheme not in ("http", "https") or site_key(url) != site_key(page_url):
-            return None
-        return None if is_here(url) else url
-
-    # Numbered pages and the page marked as current.
-    for anchor in soup.find_all("a", href=True):
-        number = _number(anchor.get_text(" ", strip=True))
-        if number is None:
-            continue
-        url = urljoin(base, anchor["href"])
-        if _in_pager(anchor) or _PAGE_URL.search(url):
-            if is_here(url):
-                info.current = info.current or number
-            elif usable(anchor["href"]):
-                info.numbered.setdefault(number, url)
-    for tag in soup.find_all(attrs={"aria-current": True}):
-        number = _number(tag.get_text(" ", strip=True))
-        if number:
-            info.current = number
-    if info.current is None:
-        for tag in soup.find_all(class_=_CURRENT_CLASS):
-            number = _number(tag.get_text(" ", strip=True))
-            if number and _in_pager(tag):
-                info.current = number
-                break
-
-    # "Page 3 of 47", or "21-40 of 340" results.
-    text = strip_accents(visible if visible is not None else soup.get_text(" ", strip=True))[:200_000]
-    stated: list[int] = []
-    for match in _PAGE_OF.finditer(text):
-        page, total = int(match.group(1)), int(match.group(2))
-        if 0 < page <= total:
-            stated.append(total)
-            info.current = info.current or page
-    if not stated:
-        for match in _ITEMS_OF.finditer(text):
-            first, last, total = (_plain_int(group) for group in match.groups())
-            if first and last and total and first <= last <= total and last - first < 1000:
-                stated.append(-(-total // (last - first + 1)))
-                break
-    highest = max([*info.numbered, *stated], default=0)
-    info.highest = highest or None
-
-    # The next link: rel="next", then a "Next" link, then the following page number,
-    # then an element styled as "next" whose address looks like a page of the list.
-    candidates: list[tuple[str, str]] = []
-    for tag in soup.find_all(["link", "a"], href=True):
-        if "next" in [value.lower() for value in (tag.get("rel") or [])]:
-            candidates.append((tag["href"], "rel=next"))
-    for anchor in soup.find_all("a", href=True):
-        label = fold(" ".join(anchor.get_text(" ", strip=True).split()))
-        aria = fold(anchor.get("aria-label") or anchor.get("title") or "")
-        bare = _ARROWS.sub("", label).strip()  # "Next →", "› Next" -> "next"
-        if (
-            label in _NEXT_TEXTS
-            or (bare and bare in _NEXT_TEXTS)
-            or aria in _NEXT_TEXTS
-            or aria.startswith(("next", "go to next"))
-        ):
-            candidates.append((anchor["href"], "next link"))
-    if info.current and info.current + 1 in info.numbered:
-        candidates.append((info.numbered[info.current + 1], "page number"))
-    for anchor in soup.find_all("a", href=True):
-        url = urljoin(base, anchor["href"])
-        if is_next_address(url, page_url):
-            candidates.append((anchor["href"], "next address"))
-            break
-    for anchor in soup.find_all("a", href=True):
-        classes = " ".join(anchor.get("class") or [])
-        label = anchor.get_text(" ", strip=True)
-        if _NEXT_CLASS.search(classes) and len(label) <= 20 and (
-            _in_pager(anchor) or _PAGE_URL.search(urljoin(base, anchor["href"]))
-        ):
-            candidates.append((anchor["href"], "next button"))
-    for href, how in candidates:
-        url = usable(href)
-        if url:
-            info.next_url, info.next_how = url, how
-            break
-
-    for tag in soup.find_all(["button", "a"]):
-        if fold(" ".join(tag.get_text(" ", strip=True).split())) in _LOAD_MORE:
-            info.load_more = True
-            break
-    return info
+    return ParsedLinks(links, soup.get_text(" ", strip=True))
 
 
 # ------------------------------------------------------------------ throttling
@@ -684,7 +429,7 @@ class _EntryRun:
                 problem is not None or len(second_parsed.links) > len(parsed.links if parsed else [])
             ):
                 self._mark(self._browser)
-                self._used_browser = True  # keep using it for the following pages
+                self._used_browser = True
                 return second, second_parsed, None
 
         overloaded = problem and problem[0] == FAILED and any(
@@ -711,83 +456,16 @@ class _EntryRun:
     def run(self) -> PageResult:
         url = self.result.url
         self.log("INFO", f"Reading {url}")
-        limit = self._options.max_pages
-        visited: set[str] = set()
-        previous_links: frozenset[str] | None = None
-        highest: int | None = None
-        number: int | None = None  # the page number of the page being read, when known
-        current: str | None = url
-        read = 0
-        gaps: list[int] = []  # pages that repeated the one before
-        while current and not self._stopped():
-            visited.add(link_key(current))
-            fetched, parsed, problem = self._open(current)
-            if problem:
-                if read == 0:
-                    self.result.status, self.result.error = problem
-                    self.log("ERROR" if problem[0] == FAILED else "WARN", problem[1])
-                else:
-                    self._partial(f"Read {read} pages; page {read + 1} could not be read: {problem[1]}")
-                break
-            read += 1
-            if read == 1:
-                self.result.final_url = fetched.url
-            info = parsed.pagination
-            number = info.current or (number + 1 if number else None) or (1 if read == 1 else None)
-            if info.highest:
-                highest = max(highest or 0, info.highest)
-            # Identical text means the site served the same page again.
-            signature = frozenset({hash(" ".join(parsed.visible_text.split()))})
-            repeated = previous_links is not None and signature == previous_links
-            if repeated and highest and read <= highest and info.next_url:
-                self.log("WARN", f"Page {read} shows exactly the same as page {read - 1}; "
-                                 f"the list has {highest} pages, so reading on")
-                gaps.append(read)
-                repeated = False
-            if repeated:
-                read -= 1
-                if highest and read < highest:
-                    self._partial(
-                        f"Read {read} pages, but page {read + 1} showed the same links as page {read} "
-                        f"although the list has {highest} pages"
-                    )
-                    self.result.expected_pages = highest
-                else:
-                    self.log("INFO", f"Page {read + 1} shows the same links as page {read}; treating it as the end")
-                    self._finish_pagination(read, highest, f"Last page reached ({read} pages read; "
-                                                           "the site repeated its last page)")
-                break
-            previous_links = signature
+        fetched, parsed, problem = self._open(url)
+        if problem:
+            self.result.status, self.result.error = problem
+            self.log("ERROR" if problem[0] == FAILED else "WARN", problem[1])
+        else:
+            self.result.final_url = fetched.url
             kept = self._take_links(parsed, fetched.url)
-            of = f" of {highest}" if highest and limit > 1 else ""
-            self.log("OK", f"Page {read}{of}: {fetched.url} · {len(parsed.links)} links, {kept} kept")
-
-            next_page = info.next_url
-            if next_page and link_key(next_page) in visited:
-                self.log("INFO", f"The next link points back to a page already read: {next_page}")
-                next_page = None
-            if not next_page:
-                self._end_without_next(read, number, highest, info, limit)
-                break
-            if read >= limit:
-                if limit > 1:
-                    more = f" (the list has {highest})" if highest and highest > read else ""
-                    self._partial(f"Stopped at the limit of {limit} pages; there are more pages{more}")
-                else:
-                    self.result.note = "This list has more pages (choose Read per page to follow them)"
-                    self.result.expected_pages = highest
-                break
-            self.log("INFO", f"Next page ({info.next_how}): {next_page}")
-            current = next_page
-
-        self.result.pages_read = read
-        if gaps and self.result.status == READ:
-            pages = ", ".join(str(number) for number in gaps)
-            self._partial(f"Read {read} pages, but page {pages} showed exactly the same as the page before; "
-                          "its own items may be missing")
-        if self.result.status == READ and not self.result.links:
-            self.result.status = NO_LINKS
-            if not self.result.error:
+            self.log("OK", f"{fetched.url} · {len(parsed.links)} links, {kept} kept")
+            if not self.result.links:
+                self.result.status = NO_LINKS
                 self.result.error = (
                     "No links passed the filters" if self.result.total_links else "No links on the page"
                 )
@@ -795,59 +473,19 @@ class _EntryRun:
             "both" if self._used_browser and self._used_plain else "browser" if self._used_browser else "http"
         )
         self.result.elapsed = time.monotonic() - self._started
-        if self.result.note:
-            self.log("WARN" if self.result.status == PARTIAL else "INFO", self.result.note)
-        self.log("DONE", f"{len(self.result.links)} links kept from {read} pages, {self.result.pages} requests, "
+        self.log("DONE", f"{len(self.result.links)} links kept, {self.result.pages} requests, "
                          f"{self.result.elapsed:.1f}s")
         return self.result
-
-    def _partial(self, note: str) -> None:
-        self.result.status = PARTIAL
-        self.result.note = note
-
-    def _finish_pagination(self, read: int, highest: int | None, note: str) -> None:
-        self.result.expected_pages = highest
-        if read > 1 or (highest and highest > 1):
-            self.result.note = note
-
-    def _end_without_next(
-        self, read: int, number: int | None, highest: int | None, info: Pagination, limit: int
-    ) -> None:
-        """No next link: the last page, unless the page itself says there are more."""
-        self.result.expected_pages = highest
-        position = number or read
-        if highest and position < highest:
-            if limit > 1 or read > 1:
-                self._partial(
-                    f"Read {read} pages, but the list goes up to page {highest}; "
-                    f"no link to page {position + 1} was found"
-                )
-            else:
-                self.result.note = f"This list has {highest} pages (choose Read per page to follow them)"
-        elif info.load_more and (limit > 1 or read > 1):
-            self._partial("The list loads more items with a button; only what the page showed was read")
-        elif read > 1:
-            total = f" of {highest}" if highest else ""
-            self.result.note = f"Last page reached ({read}{total} pages read)"
-        elif limit > 1:
-            self.result.note = "A single page: no link to a next page was found"
 
     def _take_links(self, parsed: ParsedLinks, page_url: str) -> int:
         settings = self._filter.settings
         page_key = link_key(page_url)
-        # The list's own page links ("Next", "1 2 3") are navigation, not results.
-        pager_keys = {
-            link_key(clean_url(url, settings.strip_tracking))
-            for url in [parsed.next_page, *parsed.pagination.numbered.values()] if url
-        }
         kept = 0
         for raw, text in parsed.links:
             self.result.total_links += 1
             url = clean_url(raw, settings.strip_tracking)
-            if link_key(url) == page_key or same_page(url, page_url):
+            if link_key(url) == page_key:
                 continue  # a link to the page itself
-            if link_key(url) in pager_keys:
-                continue
             reason = self._filter.judge(url, page_url)
             if reason:
                 if url not in self._rejected_seen:
@@ -872,29 +510,12 @@ def entry_key(url: str, home_pages_only: bool) -> str:
     return site_key(url) if home_pages_only else link_key(url)
 
 
-_RANGE = re.compile(r"\{(\d{1,6})\s*(?:-|\.\.)\s*(\d{1,6})\}")
-
-
-def expand_range(line: str) -> list[str]:
-    """``https://site.com/list?page={1-47}`` -> the 47 addresses, in order."""
-    match = _RANGE.search(line)
-    if not match:
-        return [line]
-    first, last = int(match.group(1)), int(match.group(2))
-    step = 1 if last >= first else -1
-    count = min(abs(last - first) + 1, MAX_RANGE)
-    return [line[:match.start()] + str(first + step * offset) + line[match.end():] for offset in range(count)]
-
-
 def parse_pages(text: str) -> list[str]:
     """Page addresses from the editor: one per line, ``https://`` added when missing,
-    duplicates removed. ``{1-47}`` in an address stands for the numbers 1 to 47."""
+    duplicates removed."""
     pages: list[str] = []
     seen: set[str] = set()
-    lines: list[str] = []
     for line in (text or "").splitlines():
-        lines.extend(expand_range(line.strip()))
-    for line in lines:
         url = line.strip().strip("\"'<>")
         if not url or url.startswith("#"):
             continue
@@ -948,7 +569,7 @@ def collect_links(
 
     summary.stopped = run_parallel(
         pages, work, options.workers, report, cancelled,
-        hard_limit=SECONDS_PER_PAGE * max(1, options.max_pages) + 60,
+        hard_limit=PAGE_HARD_LIMIT,
         give_up=give_up, on_error=on_error,
     )
     return summary

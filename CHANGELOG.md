@@ -6,6 +6,20 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-05
+
+### Removed
+
+- Link Collector no longer follows "next page" links. Each page in the list is read on
+  its own; for a list split over several pages, enter every page.
+
+### Changed
+
+- Link Collector waits and tries once more when a page answers 502, 503 or 504, which
+  sites often send when they are busy or rate-limiting.
+- Pages showing very little text next to scripts are opened in the browser in Smart mode,
+  since their links are usually drawn by JavaScript.
+
 ## [0.11.0] - 2026-11-05
 
 ### Added
@@ -306,7 +320,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/wiesdante/sieve/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/wiesdante/sieve/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/wiesdante/sieve/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/wiesdante/sieve/compare/v0.10.1...v0.10.2

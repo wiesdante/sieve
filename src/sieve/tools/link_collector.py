@@ -37,8 +37,6 @@ from sieve.core.link_collector import (
     FAILED,
     INTERNAL,
     NO_LINKS,
-    PAGE_CHOICES,
-    PARTIAL,
     READ,
     STATUSES,
     CollectOptions,
@@ -89,24 +87,14 @@ SCOPE_CHOICES = (
     (EXTERNAL, "Other sites", "Keep only links to other websites, e.g. the companies a directory lists."),
     (INTERNAL, "Same site", "Keep only links within the page's own website."),
 )
-STATUS_LABELS = {READ: "Read", PARTIAL: "Incomplete", NO_LINKS: "No links", BLOCKED: "Blocked", FAILED: "Failed"}
-STATUS_COLORS = {
-    READ: theme.SUCCESS, PARTIAL: theme.WARNING, NO_LINKS: theme.TEXT_MUTED,
-    BLOCKED: theme.WARNING, FAILED: theme.DANGER,
-}
+STATUS_LABELS = {READ: "Read", NO_LINKS: "No links", BLOCKED: "Blocked", FAILED: "Failed"}
+STATUS_COLORS = {READ: theme.SUCCESS, NO_LINKS: theme.TEXT_MUTED, BLOCKED: theme.WARNING, FAILED: theme.DANGER}
 STATUS_TIPS = {
-    PARTIAL: "Some pages of this list were not read. The note says which and why.",
     NO_LINKS: "The page opened, but no link passed the filters.",
     BLOCKED: "Bot protection or a captcha answered. Retrying with proxies may help.",
     FAILED: "The page could not be opened.",
 }
-RETRYABLE = (FAILED, BLOCKED, PARTIAL)
-
-
-def _pages_read(result: PageResult) -> str:
-    """"12", or "12 / 47" when the list shows how many pages it has."""
-    read = result.pages_read or (1 if result.status in (READ, NO_LINKS) else 0)
-    return f"{read} / {result.expected_pages}" if result.expected_pages else str(read)
+RETRYABLE = (FAILED, BLOCKED)
 
 
 class LinkCollectorTool(Tool):
@@ -300,7 +288,6 @@ class LinkCollectorPage(ToolPage):
             use_proxies=self._use_proxies.isChecked(),
             browser=self._browser.currentData(),
             workers=self._workers.currentData(),
-            max_pages=self._max_pages.currentData() if hasattr(self, "_max_pages") else 1,
         )
         self._context.save_settings()
 
@@ -322,28 +309,11 @@ class LinkCollectorPage(ToolPage):
         header.addWidget(clear)
 
         self._pages = _editor(
-            "One page per line, e.g.\nhttps://expo.com/exhibitors\n\n"
-            "{1-40} stands for the numbers 1 to 40:\nhttps://directory.org/companies?page={1-40}"
+            "One page per line, e.g.\nhttps://expo.com/exhibitors\n"
+            "https://directory.org/companies?page=1\nhttps://directory.org/companies?page=2"
         )
         self._pages.textChanged.connect(self._update_pages_info)
         body.addWidget(self._pages, 1)
-
-        follow = QHBoxLayout()
-        follow.setSpacing(8)
-        follow.addWidget(muted_label("Read per page:", wrap=False))
-        self._max_pages = QComboBox()
-        for count in PAGE_CHOICES:
-            self._max_pages.addItem("Only that page" if count == 1 else f"Up to {count} pages", count)
-        index = self._max_pages.findData(int(self._prefs.get("max_pages", 1)))
-        self._max_pages.setCurrentIndex(max(index, 0))
-        self._max_pages.setToolTip(
-            "For lists split over several pages: follow the \"Next\" link (Next, Sonraki, Weiter, »...)\n"
-            "and read the following pages too, up to this many per entry."
-        )
-        self._max_pages.currentIndexChanged.connect(self._save_options)
-        follow.addWidget(self._max_pages)
-        follow.addStretch(1)
-        body.addLayout(follow)
 
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
@@ -394,7 +364,7 @@ class LinkCollectorPage(ToolPage):
         self._tabs.setUsesScrollButtons(False)
         self._links_view = _editor("Links will appear here as pages finish.", read_only=True)
         self._details_table = _table(["Link", "Text", "Found on"], stretch=0)
-        self._pages_table = _table(["Page", "Status", "Kept", "New", "Pages", "Time", "Via", "Note"], stretch=0)
+        self._pages_table = _table(["Page", "Status", "Kept", "New", "Time", "Via", "Note"], stretch=0)
         self._rejected_table = _table(["Link", "Reason"], stretch=0)
         self._log = _editor("", read_only=True)
         self._log.setMaximumBlockCount(LOG_LINE_LIMIT)
@@ -454,7 +424,6 @@ class LinkCollectorPage(ToolPage):
         filters = self._filter_settings()
         options = CollectOptions(
             filters=filters, workers=self._workers.currentData(), browser=self._browser.currentData(),
-            max_pages=self._max_pages.currentData(),
         )
         self._clear_results()
         self._home_pages = filters.home_pages_only
@@ -465,7 +434,6 @@ class LinkCollectorPage(ToolPage):
         self._log.appendPlainText(
             f"Started {time.strftime('%Y-%m-%d %H:%M:%S')} · {len(pages)} pages · {scope}"
             + (" · home pages only" if filters.home_pages_only else "")
-            + (f" · up to {options.max_pages} pages each" if options.max_pages > 1 else "")
             + f" · {options.workers} parallel · browser {options.browser}"
             + (f" · {len(pool)} proxies" if pool else "")
             + (f" · {len(filters.exclude)} exclude rules" if filters.exclude else "")
@@ -557,13 +525,12 @@ class LinkCollectorPage(ToolPage):
                 self._append_row(self._rejected_table, [url, reason])
 
         moved = result.final_url if result.final_url.rstrip("/") != result.url.rstrip("/") else ""
-        note = result.error or result.note or moved
+        note = result.error or moved
         row = self._append_row(self._pages_table, [
             result.url,
             STATUS_LABELS.get(result.status, result.status),
             str(len(result.links)),
             str(len(new_lines)),
-            _pages_read(result),
             f"{result.elapsed:.1f}s",
             VIA_LABELS.get(result.via, result.via),
             note,
@@ -572,14 +539,8 @@ class LinkCollectorPage(ToolPage):
         status_item.setForeground(QColor(STATUS_COLORS.get(result.status, theme.TEXT)))
         if result.status in STATUS_TIPS:
             status_item.setToolTip(STATUS_TIPS[result.status])
-        if result.status == PARTIAL:
-            self._pages_table.item(row, 7).setForeground(QColor(theme.WARNING))
-        self._pages_table.item(row, 4).setToolTip(
-            "Pages of the list read" + (f", out of the {result.expected_pages} the list shows"
-                                        if result.expected_pages else "")
-        )
         self._pages_table.item(row, 3).setToolTip("Links not already found on an earlier page of the list.")
-        for column in (2, 3, 4, 5):
+        for column in (2, 3, 4):
             self._pages_table.item(row, column).setTextAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
@@ -604,7 +565,7 @@ class LinkCollectorPage(ToolPage):
             ("Pages", len(self._results), None),
             ("Links", len(self._links), theme.SUCCESS if self._links else None),
         ]
-        for status in (PARTIAL, NO_LINKS, BLOCKED, FAILED):
+        for status in (NO_LINKS, BLOCKED, FAILED):
             if counts[status]:
                 items.append((STATUS_LABELS[status], counts[status], STATUS_COLORS[status]))
         if self._rejected:
@@ -636,12 +597,12 @@ class LinkCollectorPage(ToolPage):
         flash_button(self._copy_details_button, "Copied ✓")
 
     def _copy_pages(self) -> None:
-        lines = ["Page\tStatus\tKept\tPages read\tTime\tVia\tNote"]
+        lines = ["Page\tStatus\tKept\tTime\tVia\tNote"]
         for result in self._results:
             lines.append(
                 f"{result.url}\t{STATUS_LABELS.get(result.status, result.status)}\t{len(result.links)}\t"
-                f"{_pages_read(result)}\t{result.elapsed:.1f}s\t{VIA_LABELS.get(result.via, result.via)}\t"
-                f"{result.error or result.note or result.final_url}"
+                f"{result.elapsed:.1f}s\t{VIA_LABELS.get(result.via, result.via)}\t"
+                f"{result.error or result.final_url}"
             )
         QGuiApplication.clipboard().setText("\n".join(lines))
         flash_button(self._copy_pages_button, "Copied ✓")
@@ -672,8 +633,7 @@ class LinkCollectorPage(ToolPage):
                 {
                     "url": r.url, "status": r.status, "final_url": r.final_url, "pages": r.pages,
                     "error": r.error, "elapsed": round(r.elapsed, 2), "via": r.via,
-                    "total_links": r.total_links, "pages_read": r.pages_read, "note": r.note,
-                    "expected_pages": r.expected_pages,
+                    "total_links": r.total_links,
                     "links": [[link.url, link.text, link.page] for link in r.links],
                     "rejected": [list(item) for item in r.rejected],
                 }
@@ -698,8 +658,6 @@ class LinkCollectorPage(ToolPage):
                     pages=int(item.get("pages", 0)), error=item.get("error", ""),
                     elapsed=float(item.get("elapsed", 0)), via=item.get("via", "http"),
                     total_links=int(item.get("total_links", 0)),
-                    pages_read=int(item.get("pages_read", 0)), note=item.get("note", ""),
-                    expected_pages=item.get("expected_pages"),
                     links=[Link(*link) for link in item.get("links", [])],
                     rejected=[tuple(pair) for pair in item.get("rejected", [])],
                 )
@@ -732,19 +690,16 @@ class LinkCollectorPage(ToolPage):
         self._total = 4
         expo = "https://expo.example/exhibitors?page=1"
         samples = [
-            PageResult(expo, READ, expo, 3, [
+            PageResult(expo, READ, expo, 1, [
                 Link("https://acme.example/", "ACME Defence Ltd", expo),
-                Link("https://firma.example/", "Firma Savunma A.Ş.", "https://expo.example/exhibitors?page=2"),
-                Link("https://beta.example/", "Beta Systems", "https://expo.example/exhibitors?page=3"),
+                Link("https://firma.example/", "Firma Savunma A.Ş.", expo),
+                Link("https://beta.example/", "Beta Systems", expo),
             ], [("https://www.facebook.com/expo", "Social, share or app link"),
-                ("https://expo.example/catalogue.pdf", "File download")], 64, "", "http", 4.2,
-                pages_read=3, note="Last page reached (3 of 3 pages read)", expected_pages=3),
-            PageResult("https://directory.example/defence", PARTIAL, "https://directory.example/defence", 1, [
+                ("https://expo.example/catalogue.pdf", "File download")], 64, "", "http", 4.2),
+            PageResult("https://directory.example/defence", READ, "https://directory.example/defence", 1, [
                 Link("https://acme.example/", "ACME", "https://directory.example/defence"),
                 Link("https://gamma.example/", "Gamma Optics", "https://directory.example/defence"),
-            ], [("https://directory.example/login", "Exclude rule: /login")], 41, "", "both", 6.8,
-                pages_read=20, expected_pages=34,
-                note="Stopped at the limit of 20 pages; there are more pages (the list has 34)"),
+            ], [("https://directory.example/login", "Exclude rule: /login")], 41, "", "both", 6.8),
             PageResult("https://guarded.example/members", BLOCKED, pages=2,
                        error="Bot protection or captcha (HTTP 403)", via="both", elapsed=8.1),
             PageResult("https://old.example/list", FAILED, pages=1, error="Domain not found", elapsed=0.4),

@@ -8,7 +8,7 @@ on:
         description: "Sites, separated by spaces"
         required: true
       extra:
-        description: "Extra options, e.g. --links --pages 3 --external --home"
+        description: "Extra options, e.g. --links --external --home"
         required: false
         default: ""
       browser:
