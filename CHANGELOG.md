@@ -6,6 +6,39 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-11-05
+
+### Fixed
+
+- **A run no longer hangs on one site, and Stop always works.**
+  - A site still loading after 4 minutes is given up and reported as **Failed**, so the
+    run always finishes.
+  - Stop ends the run within a few seconds, even if a site is in the middle of loading.
+  - A server answering "try again in an hour" (`Retry-After`) no longer makes the scan wait.
+  - A page whose scripts freeze the browser is given up after a minute, and a fresh browser
+    takes over.
+- Servers answering 503 now show their page (often a bot check) instead of an error.
+- `\n` written out in a page's scripts no longer sticks to the address
+  (`ninfo@` → `info@`).
+- Template addresses such as `info@website.com` are treated as placeholders.
+- A domain that redirects to a parking service (`…?dn=yourdomain.com`) is reported as
+  **Parked**.
+- Non-standard answers such as HTTP 247 or 492 count as **Blocked** (bot protection).
+- When the address entered answers 404, the site's home page is scanned instead.
+- The same page is no longer opened twice (with `#…`, `http`/`https`, `www.`), and once a
+  contact page has opened its copies in other languages (`/es/…`, `/ru/…`) are skipped.
+- News articles whose address happens to contain "contacts" are no longer treated as
+  contact pages.
+- Contact path guesses no longer carry the site's query string (`?ckattempt=1`).
+- A server that does not answer at all is not retried over `http://`.
+- **Copy sites table** writes times as `1.3s`, so spreadsheets no longer read them as dates.
+
+### Changed
+
+- The browser no longer identifies itself as automated, which gets past more simple bot checks.
+- In Smart mode the browser retry uses a smaller budget (6 pages, 60 seconds), since the
+  plain request already looked around.
+
 ## [0.10.1] - 2026-11-05
 
 ### Changed
@@ -234,7 +267,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/wiesdante/sieve/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/wiesdante/sieve/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/wiesdante/sieve/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/wiesdante/sieve/compare/v0.8.0...v0.9.0
