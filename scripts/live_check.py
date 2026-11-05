@@ -13,7 +13,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from sieve.core.email_filter import EmailFilter  # noqa: E402
-from sieve.core.email_scraper import BROWSER_MODES, HttpFetcher, ScrapeOptions, scrape_sites  # noqa: E402
+from sieve.core.email_scraper import (  # noqa: E402
+    BROWSER_MODES,
+    HttpFetcher,
+    ScrapeOptions,
+    scrape_sites,
+)
 
 
 def main() -> int:
