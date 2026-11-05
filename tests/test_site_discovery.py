@@ -341,3 +341,73 @@ def test_international_guess_paths():
     urls = guess_urls("https://firma.it/", ("it", "en"))
     assert urls[0] == "https://firma.it/contatti"
     assert "https://firma.it/en/contact" in urls
+
+
+# ------------------------------------------------------------- browser mode
+from sieve.core.email_scraper import (  # noqa: E402
+    BROWSER_ALWAYS,
+    BROWSER_OFF,
+    BROWSER_SMART,
+    EMPTY,
+    looks_js_rendered,
+)
+
+
+def test_smart_mode_retries_blocked_site_in_browser():
+    plain = Site({"https://guarded.com": "<title>Just a moment...</title>"}, {"https://guarded.com": 503})
+    browser = Site({"https://guarded.com": "<p>Write to info@guarded.com</p>"})
+    result = scan_site("https://guarded.com", plain, options=ScrapeOptions(browser=BROWSER_SMART), browser=browser)
+    assert result.status == FOUND and result.via == "browser"
+    assert [found.email for found in result.emails] == ["info@guarded.com"]
+    assert result.pages == 2
+    assert any("Retrying in the browser" in line for line in result.log)
+
+
+def test_smart_mode_does_not_open_browser_when_plain_scan_found_addresses():
+    plain = Site({"https://ok.com": "info@ok.com"})
+    browser = Site({})
+    result = scan_site("https://ok.com", plain, options=ScrapeOptions(browser=BROWSER_SMART), browser=browser)
+    assert result.via == "http" and browser.requested == []
+
+
+def test_smart_mode_renders_javascript_sites():
+    shell = '<html><body><div id="root"></div><script src="/app.js"></script></body></html>'
+    plain = Site({"https://spa.com": shell})
+    browser = Site({"https://spa.com": '<div id="root"><a href="/contact">Contact</a></div>',
+                    "https://spa.com/contact": "Email: hello@spa.com"})
+    result = scan_site("https://spa.com", plain, options=ScrapeOptions(browser=BROWSER_SMART), browser=browser)
+    assert [found.email for found in result.emails] == ["hello@spa.com"]
+    assert result.via == "browser"
+
+
+def test_always_mode_uses_browser_for_pages_and_plain_requests_for_sitemaps():
+    plain = Site({"https://a.com/robots.txt": "", "https://a.com": "should not be used"})
+    browser = Site({"https://a.com": "Welcome", "https://a.com/contact": "info@a.com"})
+    result = scan_site("https://a.com", plain, options=ScrapeOptions(browser=BROWSER_ALWAYS), browser=browser)
+    assert result.via == "browser" and result.emails[0].email == "info@a.com"
+    assert "https://a.com/robots.txt" in plain.requested
+    assert "https://a.com" not in plain.requested
+
+
+def test_missing_browser_keeps_plain_result_with_a_note():
+    class NoBrowser:
+        def fetch(self, url, quick=False):
+            return FetchResult(url, error="Browser not available: Microsoft Edge could not be started")
+
+    plain = Site({"https://e.com": "Nothing here"})
+    result = scan_site("https://e.com", plain, options=ScrapeOptions(browser=BROWSER_SMART), browser=NoBrowser())
+    assert result.status == EMPTY and result.via == "http"
+    assert any("Browser not available" in line for line in result.log)
+
+
+def test_browser_off_never_uses_browser():
+    plain = Site({"https://e.com": "Nothing here"})
+    browser = Site({"https://e.com": "info@e.com"})
+    result = scan_site("https://e.com", plain, options=ScrapeOptions(browser=BROWSER_OFF), browser=browser)
+    assert result.status == EMPTY and browser.requested == []
+
+
+def test_js_rendered_detection():
+    assert looks_js_rendered('<div id="__next"></div>', "")
+    assert looks_js_rendered("<html>", "You need to enable JavaScript to run this app.")
+    assert not looks_js_rendered("<p>" + "word " * 200 + "</p>", "word " * 200)

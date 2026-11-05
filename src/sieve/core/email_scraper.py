@@ -60,6 +60,19 @@ FORM_ONLY = "form_only"
 PARKED = "parked"
 BLOCKED = "blocked"
 STATUSES = (FOUND, FORM_ONLY, EMPTY, PARKED, BLOCKED, FAILED)
+#: Better outcomes first; used to pick between the plain and the browser scan.
+_STATUS_RANK = {status: rank for rank, status in enumerate(STATUSES)}
+
+BROWSER_OFF = "off"
+BROWSER_SMART = "smart"
+BROWSER_ALWAYS = "always"
+BROWSER_MODES = (BROWSER_OFF, BROWSER_SMART, BROWSER_ALWAYS)
+_JS_HINTS = re.compile(
+    r"enable javascript|javascript (?:is )?(?:required|disabled)|requires javascript|"
+    r"you need to enable javascript|javascript aktivieren|javascript.{0,20}etkinle[sş]tir",
+    re.IGNORECASE,
+)
+_APP_ROOT = re.compile(r'<div[^>]+id=["\'](?:root|app|__next|__nuxt|q-app|___gatsby)["\'][^>]*>\s*</div>', re.I)
 
 MAX_BYTES = 5 * 1024 * 1024
 SITE_TIME_LIMIT = 90.0
@@ -127,6 +140,8 @@ class SiteResult:
     language: str = ""
     #: A page with a contact form that was seen (useful when no address exists).
     contact_form: str = ""
+    #: How the reported result was obtained: "http", "browser", or "both" (browser tried, kept plain).
+    via: str = "http"
     log: list[str] = field(default_factory=list)
 
 
@@ -136,10 +151,14 @@ class ScrapeOptions:
     workers: int = 10
     site_time_limit: float = SITE_TIME_LIMIT
     page_budget: int = PAGE_BUDGET
+    #: BROWSER_OFF, BROWSER_SMART (browser only when the plain scan falls short) or BROWSER_ALWAYS.
+    browser: str = BROWSER_OFF
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
             raise ValueError(f"Unknown mode: {self.mode}")
+        if self.browser not in BROWSER_MODES:
+            raise ValueError(f"Unknown browser mode: {self.browser}")
 
 
 # --------------------------------------------------------------- page parsing
@@ -232,6 +251,14 @@ def parse_page(html: str, page_url: str, languages: tuple[str, ...] | None = Non
     return ParsedPage(candidates, links, scripts, languages, visible, has_contact_form(soup))
 
 
+def looks_js_rendered(html: str, visible_text: str) -> bool:
+    """True when the page is an empty shell filled in by JavaScript."""
+    if _JS_HINTS.search(visible_text[:5000]):
+        return True
+    words = len(visible_text.split())
+    return words < 40 and (bool(_APP_ROOT.search(html)) or html.lower().count("<script") >= 3)
+
+
 def normalize_site(line: str) -> str | None:
     text = line.strip()
     if not text or text.startswith("#"):
@@ -269,9 +296,14 @@ class _SiteScan:
         email_filter: EmailFilter | None,
         options: ScrapeOptions,
         cancelled: Callable[[], bool] | None,
+        page_fetcher: Fetcher | None = None,
     ) -> None:
         self.result = SiteResult(site)
+        #: Pages are opened with ``page_fetcher`` (a browser, when used); robots.txt,
+        #: sitemaps and scripts always go through the fast plain fetcher.
         self._fetcher = fetcher
+        self._page_fetcher = page_fetcher or fetcher
+        self.js_rendered = False
         self._filter = email_filter
         self._options = options
         self._cancelled = cancelled
@@ -294,10 +326,11 @@ class _SiteScan:
     def _budget_left(self) -> bool:
         return self.result.pages < self._options.page_budget
 
-    def _fetch(self, url: str, quick: bool = False) -> FetchResult:
+    def _fetch(self, url: str, quick: bool = False, page: bool = True) -> FetchResult:
         self.result.pages += 1
         self._visited.add(url.rstrip("/"))
-        return self._fetcher.fetch(url, quick=quick)
+        fetcher = self._page_fetcher if page else self._fetcher
+        return fetcher.fetch(url, quick=quick)
 
     def _reject(self, email: str, reason: str) -> None:
         if email not in self._rejected_seen:
@@ -377,7 +410,7 @@ class _SiteScan:
         for script_url in parsed.scripts[:MAX_SCRIPTS]:
             if self._out_of_time() or not self._budget_left():
                 return
-            script = self._fetch(script_url, quick=True)
+            script = self._fetch(script_url, quick=True, page=False)
             if script.ok:
                 found = find_emails(prepare_text(script.text or ""))
                 self._collect([(email, "script") for email in found], page_url)
@@ -424,6 +457,7 @@ class _SiteScan:
             return self._finish()
 
         parsed = parse_page(html, home.url)
+        self.js_rendered = looks_js_rendered(html, parsed.visible_text)
         self.result.language = parsed.languages[0]
         self.log("OK", f"Connected: {home.url} (HTTP {home.status}, language: {self.result.language})")
         if is_parked(home.url, parsed.visible_text):
@@ -492,7 +526,7 @@ class _SiteScan:
     def _read_sitemap(self, home_url: str, languages: tuple[str, ...]) -> None:
         parts = urlsplit(home_url)
         root = f"{parts.scheme}://{parts.netloc}"
-        robots = self._fetch(urljoin(root, "/robots.txt"), quick=True)
+        robots = self._fetch(urljoin(root, "/robots.txt"), quick=True, page=False)
         sitemaps = sitemaps_from_robots(robots.text or "") if robots.ok and robots.status < 400 else []
         if not sitemaps:
             sitemaps = [urljoin(root, "/sitemap.xml")]
@@ -500,14 +534,14 @@ class _SiteScan:
         for sitemap_url in sitemaps[:2]:
             if not self._budget_left() or self._out_of_time():
                 break
-            sitemap = self._fetch(sitemap_url, quick=True)
+            sitemap = self._fetch(sitemap_url, quick=True, page=False)
             if not sitemap.ok or sitemap.status >= 400:
                 continue
             found, children = parse_sitemap(sitemap.text or "")
             pages += found
             for child in children[:1]:
                 if self._budget_left():
-                    child_map = self._fetch(child, quick=True)
+                    child_map = self._fetch(child, quick=True, page=False)
                     if child_map.ok and child_map.status < 400:
                         pages += parse_sitemap(child_map.text or "")[0]
         added = 0
@@ -543,14 +577,7 @@ def _is_connection_error(error: str | None) -> bool:
     return any(word in text for word in _CONNECTION_ERRORS)
 
 
-def scan_site(
-    site: str,
-    fetcher: Fetcher,
-    email_filter: EmailFilter | None = None,
-    options: ScrapeOptions | None = None,
-    cancelled: Callable[[], bool] | None = None,
-) -> SiteResult:
-    scan = _SiteScan(site, fetcher, email_filter, options or ScrapeOptions(), cancelled)
+def _run_scan(scan: _SiteScan) -> SiteResult:
     try:
         return scan.run()
     except Exception as exc:  # never let one site stop the whole run
@@ -558,6 +585,64 @@ def scan_site(
         scan.result.error = f"Unexpected error: {exc}"
         scan.log("ERROR", scan.result.error)
         return scan._finish()
+
+
+def _needs_browser(scan: _SiteScan) -> bool:
+    result = scan.result
+    if result.status in (BLOCKED, EMPTY):
+        return True
+    if result.status == FORM_ONLY:
+        return scan.js_rendered
+    if result.status == FAILED:
+        error = result.error.lower()
+        # A browser cannot fix a missing domain or a server that does not answer.
+        return not any(word in error for word in ("domain not found", "timed out", "could not connect"))
+    return False
+
+
+def scan_site(
+    site: str,
+    fetcher: Fetcher,
+    email_filter: EmailFilter | None = None,
+    options: ScrapeOptions | None = None,
+    cancelled: Callable[[], bool] | None = None,
+    browser: Fetcher | None = None,
+) -> SiteResult:
+    """Scan one site. With a ``browser`` fetcher, ``options.browser`` decides whether
+    pages are opened in the browser always, or only when the plain scan falls short."""
+    options = options or ScrapeOptions()
+    if browser is not None and options.browser == BROWSER_ALWAYS:
+        result = _run_scan(_SiteScan(site, fetcher, email_filter, options, cancelled, browser))
+        result.via = "browser"
+        return result
+
+    first_scan = _SiteScan(site, fetcher, email_filter, options, cancelled)
+    first = _run_scan(first_scan)
+    if browser is None or options.browser != BROWSER_SMART or not _needs_browser(first_scan):
+        return first
+    if cancelled and cancelled():
+        return first
+
+    second = _run_scan(_SiteScan(site, fetcher, email_filter, options, cancelled, browser))
+    log_lines = [*first.log, "── Retrying in the browser", *second.log]
+    if second.error.startswith("Browser not available"):
+        first.log = [*log_lines]
+        first.log.append(f"[{time.strftime('%H:%M:%S')}] WARN    {second.error}")
+        return first
+
+    better = (
+        _STATUS_RANK[second.status] < _STATUS_RANK[first.status]
+        or (second.status == first.status and len(second.emails) > len(first.emails))
+    )
+    chosen = second if better else first
+    chosen.via = "browser" if better else "both"
+    if better:
+        seen = {email for email, _ in chosen.rejected}
+        chosen.rejected += [item for item in first.rejected if item[0] not in seen]
+    chosen.pages = first.pages + second.pages
+    chosen.elapsed = first.elapsed + second.elapsed
+    chosen.log = log_lines
+    return chosen
 
 
 # ------------------------------------------------------------------ the run
@@ -577,8 +662,12 @@ def scrape_sites(
     options: ScrapeOptions | None = None,
     progress: Callable[[SiteResult, int], None] | None = None,
     cancelled: Callable[[], bool] | None = None,
+    browser_for: Callable[[int], Fetcher | None] | None = None,
 ) -> ScrapeSummary:
-    """Scan ``sites`` in parallel; ``progress`` is called with each finished site."""
+    """Scan ``sites`` in parallel; ``progress`` is called with each finished site.
+
+    ``browser_for(index)`` returns the browser fetcher for a site (or None), used
+    according to ``options.browser``."""
     options = options or ScrapeOptions()
     summary = ScrapeSummary()
     lock = threading.Lock()
@@ -591,8 +680,11 @@ def scrape_sites(
 
         def submit_next() -> None:
             index, site = queue.pop()
+            browser = browser_for(index) if browser_for and options.browser != BROWSER_OFF else None
             running.add(
-                pool.submit(scan_site, site, fetcher_for(index), email_filter, options, cancelled)
+                pool.submit(
+                    scan_site, site, fetcher_for(index), email_filter, options, cancelled, browser
+                )
             )
 
         while queue and len(running) < workers:

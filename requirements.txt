@@ -6,3 +6,4 @@ packaging>=24
 PyMuPDF>=1.24,<2
 beautifulsoup4>=4.12,<5
 dnspython>=2.6,<3
+playwright>=1.47,<2

@@ -36,6 +36,9 @@ from sieve.context import AppContext
 from sieve.core.email_filter import EmailFilter
 from sieve.core.email_scraper import (
     BLOCKED,
+    BROWSER_ALWAYS,
+    BROWSER_OFF,
+    BROWSER_SMART,
     DIRECT,
     EMPTY,
     FAILED,
@@ -104,6 +107,21 @@ STATUS_COLORS = {
     FAILED: theme.DANGER,
 }
 RETRYABLE = (FAILED, BLOCKED)
+BROWSER_CHOICES = (
+    (BROWSER_SMART, "Browser: Smart",
+     "Opens a site in Microsoft Edge only when a plain request is blocked,\n"
+     "finds nothing, or the page needs JavaScript. Recommended."),
+    (BROWSER_ALWAYS, "Browser: Always",
+     "Opens every page in Microsoft Edge. Slowest, but sees what a visitor sees."),
+    (BROWSER_OFF, "Browser: Off", "Plain requests only. Fastest."),
+)
+BROWSER_POOL_LIMIT = 4
+VIA_LABELS = {"http": "Request", "browser": "Browser", "both": "Both tried"}
+VIA_TIPS = {
+    "http": "Read with a plain request.",
+    "browser": "Opened in Microsoft Edge.",
+    "both": "Also opened in Microsoft Edge, which found nothing more.",
+}
 HOW_LABELS = {
     "structured": "Site data (schema.org)",
     "decoded": "Hidden (decoded)",
@@ -127,6 +145,10 @@ class EmailScraperTool(Tool):
         import dns.resolver  # noqa: F401
         import requests  # noqa: F401
 
+        from sieve.core.browser import ensure_browser_support
+
+        ensure_browser_support()
+
     def create_widget(self, context: AppContext) -> QWidget:
         return EmailScraperPage(context)
 
@@ -139,11 +161,35 @@ def run_job(
     progress=None,
     cancelled=None,
 ) -> ScrapeSummary:
-    def fetcher_for(_index: int) -> HttpFetcher:
-        proxy = pool.next() if pool else None
+    proxies: dict[int, object] = {}
+
+    def proxy_for(index: int):
+        if pool and index not in proxies:
+            proxies[index] = pool.next()
+        return proxies.get(index)
+
+    def fetcher_for(index: int) -> HttpFetcher:
+        proxy = proxy_for(index)
         return HttpFetcher(proxy.for_requests() if proxy else None)
 
-    return scrape_sites(sites, fetcher_for, email_filter, options, progress=progress, cancelled=cancelled)
+    if options.browser == BROWSER_OFF:
+        return scrape_sites(sites, fetcher_for, email_filter, options, progress=progress, cancelled=cancelled)
+
+    from sieve.core.browser import BrowserFetcher, BrowserPool
+
+    browsers = BrowserPool(size=min(BROWSER_POOL_LIMIT, options.workers), uses_proxies=bool(pool))
+
+    def browser_for(index: int) -> BrowserFetcher:
+        proxy = proxy_for(index)
+        return BrowserFetcher(browsers, proxy.for_playwright() if proxy else None)
+
+    try:
+        return scrape_sites(
+            sites, fetcher_for, email_filter, options,
+            progress=progress, cancelled=cancelled, browser_for=browser_for,
+        )
+    finally:
+        browsers.close()
 
 
 def _editor(placeholder: str, read_only: bool = False) -> QPlainTextEdit:
@@ -254,10 +300,23 @@ class EmailScraperPage(ToolPage):
         )
         self._workers.currentIndexChanged.connect(self._save_options)
 
+        self._browser = QComboBox()
+        for value, label, tip in BROWSER_CHOICES:
+            self._browser.addItem(label, value)
+            self._browser.setItemData(self._browser.count() - 1, tip, Qt.ItemDataRole.ToolTipRole)
+        index = self._browser.findData(self._prefs.get("browser", BROWSER_SMART))
+        self._browser.setCurrentIndex(max(index, 0))
+        self._browser.setToolTip(
+            "When to open sites in Microsoft Edge instead of a plain request.\n"
+            "Smart: only for blocked, empty or JavaScript-only sites."
+        )
+        self._browser.currentIndexChanged.connect(self._save_options)
+
         for widget in (self._filter_junk, rules, self._use_proxies):
             widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             row.addWidget(widget)
         row.addStretch(1)
+        row.addWidget(self._browser)
         row.addWidget(self._workers)
         return bar
 
@@ -290,6 +349,7 @@ class EmailScraperPage(ToolPage):
             filter_junk=self._filter_junk.isChecked(),
             use_proxies=self._use_proxies.isChecked(),
             workers=self._workers.currentData(),
+            browser=self._browser.currentData(),
         )
         self._context.save_settings()
 
@@ -363,7 +423,7 @@ class EmailScraperPage(ToolPage):
         self._tabs = QTabWidget()
         self._tabs.setUsesScrollButtons(False)
         self._emails_view = _editor("Addresses will appear here as sites finish.", read_only=True)
-        self._sites_table = _table(["Site", "Status", "Emails", "Pages", "Time", "Note"], stretch=0)
+        self._sites_table = _table(["Site", "Status", "Emails", "Pages", "Time", "Via", "Note"], stretch=0)
         self._emails_table = _table(["Email", "Site", "Found on", "How"], stretch=0)
         self._rejected_table = _table(["Address", "Reason"], stretch=0)
         self._log = _editor("", read_only=True)
@@ -418,7 +478,9 @@ class EmailScraperPage(ToolPage):
 
         pool = self._context.proxy_pool() if self._use_proxies.isChecked() else None
         email_filter = load_filter() if self._filter_junk.isChecked() else None
-        options = ScrapeOptions(mode=self._mode, workers=self._workers.currentData())
+        options = ScrapeOptions(
+            mode=self._mode, workers=self._workers.currentData(), browser=self._browser.currentData()
+        )
 
         self._clear_results()
         self._total = len(sites)
@@ -426,7 +488,7 @@ class EmailScraperPage(ToolPage):
         self._set_running(True)
         self._log.appendPlainText(
             f"Started {time.strftime('%Y-%m-%d %H:%M:%S')} · {len(sites)} sites · "
-            f"{self._mode} mode · {options.workers} parallel"
+            f"{self._mode} mode · {options.workers} parallel · browser {options.browser}"
             + (f" · {len(pool)} proxies" if pool else "")
             + ("" if email_filter else " · junk filter off")
         )
@@ -531,12 +593,14 @@ class EmailScraperPage(ToolPage):
             str(len(result.emails)),
             str(result.pages),
             f"{result.elapsed:.1f}s",
+            VIA_LABELS.get(result.via, result.via),
             note,
         ])
         status_item = self._sites_table.item(row, 1)
         status_item.setForeground(QColor(STATUS_COLORS.get(result.status, theme.TEXT)))
         if result.status in STATUS_TIPS:
             status_item.setToolTip(STATUS_TIPS[result.status])
+        self._sites_table.item(row, 5).setToolTip(VIA_TIPS.get(result.via, ""))
         for column in (2, 3, 4):
             self._sites_table.item(row, column).setTextAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -592,13 +656,13 @@ class EmailScraperPage(ToolPage):
         flash_button(self._copy_details_button, "Copied ✓")
 
     def _copy_sites(self) -> None:
-        lines = ["Site\tStatus\tEmails\tPages\tTime\tNote\tAddresses"]
+        lines = ["Site\tStatus\tEmails\tPages\tTime\tVia\tNote\tAddresses"]
         for result in self._results:
             addresses = ", ".join(found.email for found in result.emails)
             lines.append(
                 f"{result.site}\t{STATUS_LABELS.get(result.status, result.status)}\t"
                 f"{len(result.emails)}\t{result.pages}\t{result.elapsed:.1f}\t"
-                f"{result.error or result.final_url}\t{addresses}"
+                f"{VIA_LABELS.get(result.via, result.via)}\t{result.error or result.final_url}\t{addresses}"
             )
         QGuiApplication.clipboard().setText("\n".join(lines))
         flash_button(self._copy_sites_button, "Copied ✓")
@@ -628,7 +692,7 @@ class EmailScraperPage(ToolPage):
                 {
                     "site": r.site, "status": r.status, "final_url": r.final_url,
                     "pages": r.pages, "error": r.error, "elapsed": round(r.elapsed, 2),
-                    "language": r.language, "contact_form": r.contact_form,
+                    "language": r.language, "contact_form": r.contact_form, "via": r.via,
                     "emails": [[f.email, f.page, f.how] for f in r.emails],
                     "rejected": [list(item) for item in r.rejected],
                 }
@@ -653,7 +717,7 @@ class EmailScraperPage(ToolPage):
                     rejected=[tuple(pair) for pair in item.get("rejected", [])],
                     pages=int(item.get("pages", 0)), error=item.get("error", ""),
                     elapsed=float(item.get("elapsed", 0)), language=item.get("language", ""),
-                    contact_form=item.get("contact_form", ""),
+                    contact_form=item.get("contact_form", ""), via=item.get("via", "http"),
                 )
                 self._add_result(result, write_log=False)
         except (KeyError, TypeError, ValueError):
@@ -691,7 +755,8 @@ class EmailScraperPage(ToolPage):
             ], [], 2, "", 1.9, "de"),
             SiteResult("https://shop.example", FOUND, "https://www.shop.example/tr/", [
                 FoundEmail("destek@shop.example", "https://www.shop.example/tr/iletisim", "protected"),
-            ], [("a8f3k2m9x7q1w5e4z@shop.example", "Random-looking username")], 5, "", 4.1, "tr"),
+            ], [("a8f3k2m9x7q1w5e4z@shop.example", "Random-looking username")], 5, "", 4.1, "tr",
+                via="browser"),
             SiteResult("https://form.example", FORM_ONLY, "https://form.example/", [], [], 6,
                        "Only a contact form (https://form.example/contact)", 5.2, "en"),
             SiteResult("https://parked.example", PARKED, "https://parked.example/", [], [], 1,
