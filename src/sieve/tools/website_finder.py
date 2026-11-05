@@ -39,12 +39,13 @@ from sieve.core.website_finder import (
     REGIONS,
     STATUSES,
     UNSURE,
+    BrowserSearcher,
     Candidate,
     Connections,
     FinderResult,
     FinderSettings,
     FinderSummary,
-    Searcher,
+    RunStatus,
     find_websites,
     parse_block_rules,
     parse_companies,
@@ -52,7 +53,7 @@ from sieve.core.website_finder import (
 from sieve.proxy import ProxyPool
 from sieve.storage import JsonDocument
 from sieve.tools.base import Tool
-from sieve.tools.email_scraper import LOG_LINE_LIMIT, _duration, _editor, _table
+from sieve.tools.email_scraper import BROWSER_POOL_LIMIT, LOG_LINE_LIMIT, _duration, _editor, _table
 from sieve.ui import theme
 from sieve.ui.routing import SendToButton, notify_finished
 from sieve.ui.tasks import BackgroundTask, run_in_background
@@ -101,7 +102,10 @@ class WebsiteFinderTool(Tool):
 
     def self_check(self) -> None:
         import bs4  # noqa: F401
-        import requests  # noqa: F401
+
+        from sieve.core.browser import ensure_browser_support
+
+        ensure_browser_support()
 
     def create_widget(self, context: AppContext) -> QWidget:
         return WebsiteFinderPage(context)
@@ -112,12 +116,26 @@ def run_job(
     settings: FinderSettings,
     workers: int,
     pool: ProxyPool | None,
+    status: RunStatus,
     progress=None,
     cancelled=None,
 ) -> FinderSummary:
+    from sieve.core.browser import BrowserFetcher, BrowserPool
+
     proxies = pool.proxies if pool else None
-    connections = Connections(proxies, lambda proxy: Searcher(proxy.for_requests() if proxy else None))
-    return find_websites(companies, connections, settings, workers, progress=progress, cancelled=cancelled)
+    # DuckDuckGo turns plain HTTP clients down; searches go through the real browser.
+    browsers = BrowserPool(size=max(1, min(BROWSER_POOL_LIMIT, workers, len(proxies or [None]))),
+                           uses_proxies=bool(proxies))
+
+    def searcher_for(proxy):
+        return BrowserSearcher(BrowserFetcher(browsers, proxy.for_playwright() if proxy else None))
+
+    status.set("Starting the browser...")
+    try:
+        connections = Connections(proxies, searcher_for, status)
+        return find_websites(companies, connections, settings, workers, progress=progress, cancelled=cancelled)
+    finally:
+        browsers.close()
 
 
 class WebsiteFinderPage(ToolPage):
@@ -128,6 +146,7 @@ class WebsiteFinderPage(ToolPage):
         self._session_doc = JsonDocument(SESSION_DOCUMENT)
         self._task: BackgroundTask | None = None
         self._persist_session = True
+        self._status = RunStatus()
         self._reset_state()
 
         self._save_timer = QTimer(self)
@@ -220,6 +239,9 @@ class WebsiteFinderPage(ToolPage):
             self._use_proxies.setText("Use proxies")
             reason = "turned off" if self._context.settings.proxies else "empty"
             self._use_proxies.setToolTip(f"The proxy list in Settings is {reason}.")
+        self._use_proxies.blockSignals(True)
+        self._use_proxies.setChecked(bool(pool) and bool(self._prefs.get("use_proxies", True)))
+        self._use_proxies.blockSignals(False)
         self._update_pace_hint()
 
     def _update_pace_hint(self) -> None:
@@ -229,8 +251,8 @@ class WebsiteFinderPage(ToolPage):
             text = (f"{len(pool)} proxies · about {per_minute} searches a minute at most; "
                     "each proxy rests between searches.")
         else:
-            text = (f"No proxies: one search every {DIRECT_COOLDOWN:.0f}+ seconds. DuckDuckGo may "
-                    "slow you down after a while; proxies help with long lists.")
+            text = (f"No proxies: one search every {DIRECT_COOLDOWN:.0f}+ seconds. Searches run in your "
+                    "browser (Chrome or Edge), out of sight; proxies help with long lists.")
         self._pace_hint.setText(text)
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
@@ -238,11 +260,9 @@ class WebsiteFinderPage(ToolPage):
         super().showEvent(event)
 
     def _save_options(self) -> None:
-        self._prefs.update(
-            region=self._region.currentData(),
-            use_proxies=self._use_proxies.isChecked(),
-            workers=self._workers.currentData(),
-        )
+        self._prefs.update(region=self._region.currentData(), workers=self._workers.currentData())
+        if self._use_proxies.isEnabled():  # an unavailable list must not overwrite the choice
+            self._prefs["use_proxies"] = self._use_proxies.isChecked()
         self._context.save_settings()
         if hasattr(self, "_pace_hint"):
             self._update_pace_hint()
@@ -385,8 +405,9 @@ class WebsiteFinderPage(ToolPage):
             + (f" · {len(pool)} proxies" if pool else " · no proxies")
             + (f" · {len(settings.block)} block rules" if settings.block else "")
         )
+        self._status = RunStatus()
         self._task = run_in_background(
-            run_job, companies, settings, workers, pool,
+            run_job, companies, settings, workers, pool, self._status,
             on_success=self._on_done, on_error=self._on_error, on_progress=self._on_company_done,
         )
 
@@ -416,7 +437,8 @@ class WebsiteFinderPage(ToolPage):
         text = f"{format_number(done)} / {format_number(self._total)} companies · {_duration(elapsed)}"
         if done and done < self._total:
             text += f" · about {_duration(elapsed / done * (self._total - done))} left"
-        self._progress_label.setText(text)
+        now = self._status.text if self._task is not None else ""
+        self._progress_label.setText(text + (f"\n{now}" if now else ""))
 
     def _on_company_done(self, result: FinderResult, total: int) -> None:
         self._add_result(result)

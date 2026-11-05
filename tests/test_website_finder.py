@@ -380,3 +380,51 @@ def test_a_success_resets_the_limit_count():
     conns.release(conns.acquire(), "ok")
     conns.release(conns.acquire(), "limited")
     assert not conns.exhausted
+
+
+def test_a_media_company_keeps_its_own_news_site():
+    outcome = judge_results("ARMY RECOGNITION GROUP", results(
+        ("https://www.armyrecognition.com/", "Army Recognition"),
+    ), SETTINGS)
+    assert outcome.status == FOUND and outcome.website == "https://www.armyrecognition.com/"
+
+
+def test_browser_searcher_reads_the_page_and_reports_errors():
+    from sieve.core.email_scraper import FetchResult
+    from sieve.core.website_finder import BrowserSearcher
+
+    class Fetcher:
+        def __init__(self, result):
+            self.result = result
+            self.urls = []
+
+        def fetch(self, url, quick=False):
+            self.urls.append(url)
+            return self.result
+
+    ok = Fetcher(FetchResult("x", text=HTML_PAGE, status=200))
+    page, error = BrowserSearcher(ok).search("Bird Aerosystems", "tr-tr")
+    assert error is None and page.kind == "results"
+    assert ok.urls == ["https://html.duckduckgo.com/html/?q=Bird+Aerosystems&kl=tr-tr"]
+    page, error = BrowserSearcher(Fetcher(FetchResult("x", error="Browser timed out"))).search("A", lite=True)
+    assert page.kind == "unexpected" and error == "Browser timed out"
+
+
+def test_missing_browser_fails_at_once_with_a_clear_message():
+    class NoBrowser:
+        def search(self, query, region="", lite=False):
+            return SearchPage("unexpected"), "Browser not available: no supported browser could be started"
+
+    result = find_website("Aselsan", connections([NoBrowser()]), SETTINGS)
+    assert result.status == FAILED and "Chrome or Microsoft Edge" in result.error
+    assert result.searches == 1
+
+
+def test_status_tells_what_the_run_waits_for():
+    conns = connections([FakeSearcher([])], penalty=0.6)
+    conns.release(conns.acquire(), "limited")
+    waiter = threading.Thread(target=conns.acquire)
+    waiter.start()
+    time.sleep(0.2)
+    assert "slow down" in conns.status.text
+    waiter.join(3)

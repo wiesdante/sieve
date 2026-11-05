@@ -28,7 +28,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from sieve.core.parallel import run_parallel
 from sieve.core.site_discovery import site_key, strip_accents
@@ -63,6 +63,8 @@ DEAD_AFTER = 3
 COMPANY_HARD_LIMIT = 900.0
 
 HTML_ENDPOINT = "https://html.duckduckgo.com/html/"
+#: Answers that mean the browser itself cannot run, so every search would fail.
+BROWSER_MISSING = "Browser not available"
 LITE_ENDPOINT = "https://lite.duckduckgo.com/lite/"
 
 #: DuckDuckGo regions ("kl" parameter). "" searches all regions.
@@ -224,7 +226,9 @@ class FinderSettings:
         )
 
 
-def not_a_company_site(url: str, settings: FinderSettings, company_label: str = "") -> str | None:
+def not_a_company_site(
+    url: str, settings: FinderSettings, company_label: str | tuple[str, ...] = ""
+) -> str | None:
     """Why the address cannot be a company's own website, or None."""
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
@@ -238,9 +242,12 @@ def not_a_company_site(url: str, settings: FinderSettings, company_label: str = 
             rule in lowered
         ):
             return f"Your block list: {rule}"
-    label = brand_label(host)
-    if company_label and label == company_label:
-        return None  # the company is the platform itself (searching "Trendyol")
+    label = re.sub(r"[^a-z0-9]", "", brand_label(host))
+    labels = (company_label,) if isinstance(company_label, str) else company_label
+    if label and label in labels:
+        # The company is the platform itself: "Trendyol", or "Army Recognition Group" whose
+        # own site is a news site.
+        return None
     for key in settings.categories:
         category = CATEGORIES[key]
         if _in_domains(host, category.domains) or label in category.brands:
@@ -289,8 +296,9 @@ class CompanyName:
         return "".join(token[0] for token in self.tokens) if len(self.tokens) >= 2 else ""
 
     @property
-    def label(self) -> str:
-        return self.joined
+    def label(self) -> tuple[str, ...]:
+        """Domain names that are this company's own, even on a listed platform."""
+        return tuple(dict.fromkeys(filter(None, (self.joined, "".join(self.distinctive)))))
 
 
 def company_name(raw: str) -> CompanyName:
@@ -491,60 +499,58 @@ def _add(results: list[SearchResult], seen: set[str], url: str, title: str, snip
         results.append(SearchResult(url, title, snippet))
 
 
-class Searcher:
-    """Sends one search through one connection (a proxy, or none)."""
+class BrowserSearcher:
+    """Searches through the real browser (Chrome or Edge), with one connection's proxy.
 
-    USER_AGENT = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
-    )
+    DuckDuckGo turns down plain HTTP clients at once (HTTP 202), even from home
+    connections, while a real browser gets results; the browser also keeps this
+    connection's cookies from search to search, like a person searching.
+    """
 
-    def __init__(self, proxies: dict[str, str] | None = None) -> None:
-        import requests
-
-        self._requests = requests
-        self._session = requests.Session()
-        self._session.headers.update({
-            "User-Agent": self.USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9,tr;q=0.8",
-        })
-        if proxies:
-            self._session.proxies.update(proxies)
+    def __init__(self, fetcher) -> None:
+        self._fetcher = fetcher
 
     def search(self, query: str, region: str = "", lite: bool = False) -> tuple[SearchPage, str | None]:
         """(page, connection error)."""
         endpoint = LITE_ENDPOINT if lite else HTML_ENDPOINT
-        origin = endpoint.rsplit("/", 2)[0]
-        data = {"q": query, "kl": region or "wt-wt"}
-        if not lite:
-            data["b"] = ""
-        try:
-            response = self._session.post(
-                endpoint, data=data, timeout=(8, 20),
-                headers={"Referer": origin + "/", "Origin": origin},
-            )
-        except self._requests.RequestException as exc:
-            return SearchPage("unexpected"), _connection_error(exc)
-        return parse_search_page(response.status_code, response.text), None
+        url = endpoint + "?" + urlencode({"q": query, "kl": region or "wt-wt"})
+        result = self._fetcher.fetch(url, quick=True)
+        if result.error or result.text is None:
+            return SearchPage("unexpected"), result.error or "No answer"
+        return parse_search_page(result.status, result.text), None
 
 
-def _connection_error(exc: Exception) -> str:
-    text = f"{exc.__class__.__name__}: {exc}"
-    for marker, label in (("ProxyError", "Proxy error"), ("ConnectTimeout", "Connection timed out"),
-                          ("ReadTimeout", "DuckDuckGo did not answer in time"),
-                          ("SSLError", "SSL error"), ("ConnectionError", "Could not connect")):
-        if marker in text:
-            return label
-    return text[:120]
+# ------------------------------------------------------------- run status
+class RunStatus:
+    """What the run is doing right now, for the window to show while it waits."""
+
+    def __init__(self) -> None:
+        self._text = ""
+        self._lock = threading.Lock()
+
+    @property
+    def text(self) -> str:
+        with self._lock:
+            return self._text
+
+    def set(self, text: str) -> None:
+        with self._lock:
+            self._text = text
 
 
 # ------------------------------------------------------------- connections
 class Connections:
     """The proxies (or the direct connection) searches go through, with rest periods."""
 
-    def __init__(self, proxies: list | None, searcher_for: Callable[[object | None], object]) -> None:
+    def __init__(
+        self,
+        proxies: list | None,
+        searcher_for: Callable[[object | None], object],
+        status: RunStatus | None = None,
+    ) -> None:
         self.using_proxies = bool(proxies)
+        self.status = status or RunStatus()
+        self._last_limited = False
         entries = list(proxies) if proxies else [None]
         self._searchers = [searcher_for(entry) for entry in entries]
         self._names = [str(entry) if entry is not None else "direct" for entry in entries]
@@ -582,6 +588,13 @@ class Connections:
                     return chosen
                 waits = [self._ready_at[i] - now for i in range(len(self._searchers))
                          if not self._dead[i] and not self._busy[i]]
+                if waits and not any(self._busy):
+                    seconds = max(1, int(min(waits) + 0.99))
+                    if self._last_limited:
+                        self.status.set(f"DuckDuckGo asked to slow down · waiting {seconds}s before the next search")
+                    elif seconds >= 2:
+                        what = "a proxy" if self.using_proxies else "the connection"
+                        self.status.set(f"Waiting {seconds}s for {what} to rest")
                 self._lock.wait(timeout=min([0.25, *[max(w, 0.01) for w in waits]]))
 
     def searcher(self, slot: int):
@@ -595,6 +608,7 @@ class Connections:
         with self._lock:
             self._busy[slot] = False
             jitter = random.uniform(0.85, 1.35)
+            self._last_limited = outcome == "limited"
             if outcome == "limited":
                 self._failures[slot] = 0
                 self._limits[slot] += 1
@@ -736,9 +750,15 @@ def find_website(
             break
         lite = attempt % 2 == 1  # alternate with the lite page after a failed try
         via = connections.name(slot)
-        page, error = connections.searcher(slot).search(company, settings.region, lite=lite)
+        connections.status.set(f"Searching: {company}" + (f" (try {attempt + 1})" if attempt else ""))
+        query = " ".join(company.replace('"', " ").split())
+        page, error = connections.searcher(slot).search(query, settings.region, lite=lite)
         searches += 1
         where = f"{'lite' if lite else 'html'} page via {via}"
+        if error and error.startswith(BROWSER_MISSING):
+            connections.release(slot, "ok")
+            last_problem = "Website Finder needs Google Chrome or Microsoft Edge: " + error
+            break
         if error:
             connections.release(slot, "error")
             last_problem = error

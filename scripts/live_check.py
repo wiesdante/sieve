@@ -65,17 +65,27 @@ def main() -> int:
 
 
 def check_find(names: list[str], region: str) -> int:
-    from sieve.core.website_finder import Connections, FinderSettings, Searcher, find_websites
+    from sieve.core.browser import BrowserFetcher, BrowserPool
+    from sieve.core.website_finder import (
+        BrowserSearcher,
+        Connections,
+        FinderSettings,
+        find_websites,
+    )
 
     names = [name.strip() for name in names if name.strip()]
-    connections = Connections(None, lambda _proxy: Searcher())
+    browsers = BrowserPool(size=1)
+    connections = Connections(None, lambda _proxy: BrowserSearcher(BrowserFetcher(browsers)))
     started = time.monotonic()
     def show(result, _total) -> None:
         print(f"\n── {result.company}")
         print("\n".join(result.log))
         print(f"=> {result.status}: {result.website or '-'} {result.match} {result.error}", flush=True)
 
-    summary = find_websites(names, connections, FinderSettings(region=region), workers=1, progress=show)
+    try:
+        summary = find_websites(names, connections, FinderSettings(region=region), workers=1, progress=show)
+    finally:
+        browsers.close()
     order = {name: index for index, name in enumerate(names)}
     found = sum(1 for r in summary.results if r.status == "found")
     print(f"\nFound {found}/{len(names)} in {time.monotonic() - started:.1f}s")
