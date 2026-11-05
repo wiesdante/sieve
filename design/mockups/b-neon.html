@@ -1,0 +1,53 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"><style>*{box-sizing:border-box;margin:0;padding:0}html,body{width:1280px;height:800px;overflow:hidden}
+    body{background:radial-gradient(1200px 700px at 80% -10%,#3a0f5c 0,transparent 60%),radial-gradient(900px 600px at -10% 110%,#06305a 0,transparent 55%),#07040f;
+      color:#d9d2ff;font:15px 'Rajdhani',sans-serif;display:flex;font-weight:500}
+    .side{width:84px;background:#0c0718cc;border-right:1px solid #2a1a4a;display:flex;flex-direction:column;align-items:center;padding:16px 0;gap:10px}
+    .mark{width:46px;height:46px;clip-path:polygon(25% 0,100% 0,100% 75%,75% 100%,0 100%,0 25%);background:linear-gradient(135deg,#ff2bd6,#7a3cff);display:grid;place-items:center;font:900 18px Orbitron;color:#fff;margin-bottom:14px}
+    .ic{width:46px;height:40px;display:grid;place-items:center;color:#6f63a8;font:700 12px Orbitron;border:1px solid transparent}
+    .ic.on{color:#fff;border-color:#00f0ff;box-shadow:0 0 12px #00f0ff88,inset 0 0 10px #00f0ff44;background:#00f0ff14}
+    .main{flex:1;padding:22px 26px;display:flex;flex-direction:column;gap:14px}
+    h1{font:900 26px Orbitron;letter-spacing:3px;color:#fff;text-shadow:0 0 18px #ff2bd6aa}
+    h1 span{color:#00f0ff;text-shadow:0 0 14px #00f0ffaa}.sub{color:#8e83c9;margin-top:-6px;letter-spacing:1px}
+    .cut{clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
+    .bar{background:linear-gradient(90deg,#1a0f33,#120a26);border:1px solid #3a2766;padding:10px 16px;display:flex;gap:16px;align-items:center}
+    .seg{display:flex}.seg span{padding:6px 16px;font:700 12px Orbitron;letter-spacing:1px;color:#8e83c9;border:1px solid #3a2766}
+    .seg span.on{background:linear-gradient(90deg,#ff2bd6,#a43cff);color:#fff;border-color:#ff2bd6;box-shadow:0 0 14px #ff2bd677}
+    .tog{display:flex;align-items:center;gap:8px}.sw{width:34px;height:16px;border-radius:8px;background:#2a1a4a;position:relative}
+    .sw.on{background:#00f0ff55;box-shadow:0 0 8px #00f0ff88}.sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:6px;background:#8e83c9}
+    .sw.on::after{left:20px;background:#00f0ff}
+    .chip{border:1px solid #3a2766;padding:5px 12px;font:600 12px Orbitron;letter-spacing:1px;color:#c9c0ff}.push{margin-left:auto}
+    .grid{flex:1;display:grid;grid-template-columns:350px 1fr;gap:16px;min-height:0}
+    .panel{background:linear-gradient(180deg,#160d2bee,#0e0820ee);border:1px solid #33215c;padding:16px;display:flex;flex-direction:column;min-height:0;position:relative}
+    .panel::before{content:"";position:absolute;left:0;top:0;width:70px;height:2px;background:#00f0ff;box-shadow:0 0 10px #00f0ff}
+    .pt{font:700 14px Orbitron;letter-spacing:2px;color:#fff;margin-bottom:12px}.pt i{font:500 13px Rajdhani;color:#8e83c9;font-style:normal;letter-spacing:0}
+    .ed{flex:1;background:#07040fcc;border:1px solid #2a1a4a;padding:10px 12px;font:13px 'JetBrains Mono';color:#bfb6ff;line-height:1.8}
+    .btn{padding:10px 16px;font:700 13px Orbitron;letter-spacing:2px;text-align:center;color:#d9d2ff;border:1px solid #4a3480;background:#1a0f33}
+    .btn.p{background:linear-gradient(90deg,#ff2bd6,#7a3cff);border:none;color:#fff;box-shadow:0 0 18px #ff2bd666}
+    .row{display:flex;gap:10px;margin-top:12px}.row .p{flex:1}
+    .prog{height:6px;background:#2a1a4a;margin-top:12px}.prog div{height:100%;width:78%;background:linear-gradient(90deg,#00f0ff,#ff2bd6);box-shadow:0 0 10px #00f0ff}
+    .pl{font-size:13px;color:#8e83c9;margin-top:6px}
+    .stats{display:flex;gap:10px;margin-bottom:12px}.st{flex:1;border:1px solid #2a1a4a;padding:8px 10px;background:#0b0618}
+    .st b{display:block;font:700 22px Orbitron;color:#fff}.st span{font-size:12px;color:#8e83c9;letter-spacing:1px;text-transform:uppercase}
+    .st.c b{color:#00f0ff;text-shadow:0 0 10px #00f0ff88}.st.m b{color:#ff2bd6;text-shadow:0 0 10px #ff2bd688}.st.y b{color:#ffd23f}
+    .tabs{display:flex;gap:20px;border-bottom:1px solid #2a1a4a;margin-bottom:6px}.tabs span{padding:6px 0;color:#8e83c9;font-weight:600;letter-spacing:1px}
+    .tabs span.on{color:#00f0ff;border-bottom:2px solid #00f0ff;text-shadow:0 0 8px #00f0ff}
+    table{width:100%;border-collapse:collapse;font-size:15px}td{padding:6px 4px;border-bottom:1px solid #1d1338}
+    .e{font:13px 'JetBrains Mono';color:#e6e0ff}.mu{color:#8e83c9}.h{color:#6f63a8;font-size:13px}
+    .foot{display:flex;gap:10px;margin-top:auto;padding-top:12px}.foot .btn{padding:7px 12px;font-size:11px}
+    </style></head><body>
+    <div class="side"><div class="mark">S</div><div class="ic">HO</div><div class="ic">WE</div><div class="ic">LI</div><div class="ic on">EM</div><div class="ic">LI</div><div class="ic">DU</div><div class="ic">KE</div><div class="ic">TE</div><div style="flex:1"></div><div class="ic">ST</div></div>
+    <div class="main"><div><h1>EMAIL <span>SCRAPER</span></h1></div><div class="sub">Finds contact addresses on a list of websites</div>
+      <div class="bar cut"><div class="seg"><span class="on">STANDARD</span><span>DIRECT</span></div>
+        <div class="tog"><div class="sw on"></div>Filter junk</div><div class="chip">RULES</div>
+        <div class="tog"><div class="sw"></div>Proxies</div><div class="chip push">BROWSER · SMART</div><div class="chip">10 THREADS</div></div>
+      <div class="grid">
+        <div class="panel cut"><div class="pt">TARGETS <i>· 9 sites</i></div><div class="ed">acme-defence.com<br>firma.com.tr<br>bird-aero.example<br>excalibur.cz<br>parked-domain.net<br>guarded.example<br>old-site.example<br>regula.example<br>hobbywing.example</div>
+          <div class="prog"><div></div></div><div class="pl">7 / 9 sites · 0:24 · about 0:07 left</div>
+          <div class="row"><div class="btn p">START</div><div class="btn">STOP</div></div></div>
+        <div class="panel cut"><div class="pt">RESULTS</div>
+          <div class="stats"><div class="st c"><b>7</b><span>emails</span></div><div class="st"><b>4</b><span>found</span></div>
+            <div class="st y"><b>1</b><span>blocked</span></div><div class="st m"><b>1</b><span>failed</span></div></div>
+          <div class="tabs"><span class="on">EMAILS</span><span>DETAILS</span><span>SITES</span><span>REJECTED</span><span>LOG</span></div>
+          <table><tr><td class="e">info@acme-defence.com</td><td class="mu">acme-defence.com</td><td class="h">Site data</td></tr><tr><td class="e">sales@acme-defence.com</td><td class="mu">acme-defence.com</td><td class="h">mailto link</td></tr><tr><td class="e">bilgi@firma.com.tr</td><td class="mu">firma.com.tr</td><td class="h">Page text</td></tr><tr><td class="e">contact@bird-aero.example</td><td class="mu">bird-aero.example</td><td class="h">mailto link</td></tr><tr><td class="e">office@excalibur.cz</td><td class="mu">excalibur.cz</td><td class="h">Cloudflare</td></tr><tr><td class="e">export@excalibur.cz</td><td class="mu">excalibur.cz</td><td class="h">Page text</td></tr><tr><td class="e">support@regula.example</td><td class="mu">regula.example</td><td class="h">mailto link</td></tr></table>
+          <div class="foot"><div class="btn p">COPY EMAILS</div><div class="btn">DETAILS</div><div class="btn">SEND TO ▾</div><div class="btn">RETRY FAILED</div></div></div>
+      </div></div></body></html>

@@ -1,0 +1,53 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"><style>*{box-sizing:border-box;margin:0;padding:0}html,body{width:1280px;height:800px;overflow:hidden}
+    body{background:#030703;color:#9cf59a;font:13px 'JetBrains Mono',monospace;display:flex}
+    body::after{content:"";position:fixed;inset:0;pointer-events:none;
+      background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px)}
+    .side{width:220px;border-right:1px solid #134d13;padding:18px 0;display:flex;flex-direction:column}
+    .logo{color:#39ff14;font-weight:700;padding:0 18px 4px;font-size:15px;text-shadow:0 0 8px #39ff1499}
+    .logo small{display:block;color:#2f8a2f;font-weight:400;font-size:11px;margin-top:2px}
+    .nav{margin-top:22px}.nav div{padding:7px 18px;color:#4fa84d}
+    .nav div.on{color:#030703;background:#39ff14;font-weight:700}
+    .nav .sep{color:#1f5f1f;padding:12px 18px 4px;font-size:11px}
+    .main{flex:1;padding:20px 26px;display:flex;flex-direction:column;gap:14px}
+    .prompt{color:#39ff14;font-size:18px;font-weight:700;text-shadow:0 0 10px #39ff1466}
+    .prompt span{color:#2f8a2f;font-weight:400}.cur{display:inline-block;width:10px;height:18px;background:#39ff14;vertical-align:-3px;margin-left:4px}
+    .desc{color:#3d8f3c;font-size:12px;margin-top:-8px}
+    .bar{border:1px solid #134d13;padding:9px 12px;display:flex;gap:18px;align-items:center;color:#62c560}
+    .bar .seg span{padding:4px 10px;border:1px solid #1f6f1f;color:#4fa84d}.bar .seg span.on{background:#39ff14;color:#030703;border-color:#39ff14;font-weight:700}
+    .bar .push{margin-left:auto}.chk{color:#39ff14}
+    .grid{flex:1;display:grid;grid-template-columns:360px 1fr;gap:14px;min-height:0}
+    .box{border:1px solid #1d6b1d;position:relative;padding:22px 14px 14px;display:flex;flex-direction:column;min-height:0}
+    .box>.t{position:absolute;top:-9px;left:12px;background:#030703;padding:0 6px;color:#39ff14;font-weight:700}
+    .box>.t i{color:#2f8a2f;font-style:normal;font-weight:400}
+    .ed{flex:1;color:#9cf59a;line-height:1.75;overflow:hidden}.ed b{color:#2f8a2f;font-weight:400;margin-right:10px}
+    .btn{border:1px solid #39ff14;color:#39ff14;padding:8px 14px;text-align:center;font-weight:700}
+    .btn.p{background:#39ff14;color:#030703;box-shadow:0 0 14px #39ff1455}
+    .row{display:flex;gap:8px;margin-top:10px}.row .btn{flex:1}.row .btn.s{flex:0 0 90px;border-color:#1f6f1f;color:#2f8a2f}
+    .prog{margin-top:10px;color:#62c560;font-size:12px}.prog .b{color:#39ff14}
+    .stats{color:#62c560;margin-bottom:10px}.stats b{color:#39ff14}.stats .w{color:#ffb000}.stats .r{color:#ff4b4b}
+    .tabs{display:flex;gap:4px;margin-bottom:8px}.tabs span{padding:4px 10px;color:#2f8a2f}.tabs span.on{color:#39ff14;border-bottom:2px solid #39ff14}
+    table{width:100%;border-collapse:collapse;font-size:12px}td{padding:5px 6px;border-bottom:1px dashed #0f3a0f}
+    th{text-align:left;color:#2f8a2f;font-weight:400;padding:5px 6px;border-bottom:1px solid #1d6b1d}
+    .ok{color:#39ff14}.wa{color:#ffb000}.er{color:#ff4b4b}.mu{color:#2f8a2f}
+    .foot{display:flex;gap:8px;margin-top:auto;padding-top:10px}.foot .btn{font-weight:500;padding:6px 10px}
+    .head{display:flex;align-items:center}.head .btn{margin-left:auto}
+    </style></head><body>
+    <div class="side"><div class="logo">SIEVE_<small>v0.13 // by wiesdante</small></div>
+      <div class="nav"><div class="sep"># main</div><div>  home</div><div class="sep"># scraping</div><div class="">  website_finder</div><div class="">  link_collector</div><div class="on">&gt; email_scraper</div><div class="">  link_extractor</div><div class="">  duplicate_remover</div><div class="">  keyword_filter</div><div class="">  text_stripper</div>
+      <div class="sep"># system</div><div>  settings</div><div>  about</div></div></div>
+    <div class="main">
+      <div><div class="prompt"><span>root@sieve:~$</span> email_scraper<span class="cur"></span></div></div>
+      <div class="desc">// finds contact addresses on a list of websites, with junk filtering</div>
+      <div class="bar"><span class="seg"><span class="on">STANDARD</span><span>DIRECT</span></span>
+        <span><span class="chk">[x]</span> filter_junk</span><span class="btn" style="padding:3px 10px">rules</span>
+        <span><span class="mu">[ ]</span> proxies</span><span class="push">browser=<b class="ok">smart</b></span><span>threads=<b class="ok">10</b></span></div>
+      <div class="grid">
+        <div class="box"><div class="t">TARGETS <i>· 9 sites</i></div><div class="ed"><div><b>01</b>acme-defence.com</div><div><b>02</b>firma.com.tr</div><div><b>03</b>bird-aero.example</div><div><b>04</b>excalibur.cz</div><div><b>05</b>parked-domain.net</div><div><b>06</b>guarded.example</div><div><b>07</b>old-site.example</div><div><b>08</b>regula.example</div><div><b>09</b>hobbywing.example</div></div>
+          <div class="prog">[<span class="b">████████████░░░░░░</span>] 7/9 · 00:24 · eta 00:07</div>
+          <div class="row"><div class="btn p">[ RUN ]</div><div class="btn s">[ STOP ]</div></div></div>
+        <div class="box"><div class="t">OUTPUT</div>
+          <div class="stats">sites <b>7</b> · emails <b>7</b> · found <b>4</b> · <span class="w">blocked 1</span> · <span class="r">failed 1</span> · parked 1</div>
+          <div class="tabs"><span class="on">emails</span><span>details</span><span>sites</span><span>rejected(2)</span><span>log</span></div>
+          <table><tr><th>SITE</th><th>STATUS</th><th>EMAILS</th><th>TIME</th></tr><tr><td>acme-defence.com</td><td class="ok">[FOUND]</td><td>2</td><td class="mu">1.2s</td></tr><tr><td>firma.com.tr</td><td class="ok">[FOUND]</td><td>1</td><td class="mu">0.9s</td></tr><tr><td>bird-aero.example</td><td class="ok">[FOUND]</td><td>1</td><td class="mu">2.4s</td></tr><tr><td>excalibur.cz</td><td class="ok">[FOUND]</td><td>2</td><td class="mu">1.6s</td></tr><tr><td>parked-domain.net</td><td class="mu">[PARKED]</td><td>0</td><td class="mu">0.6s</td></tr><tr><td>guarded.example</td><td class="wa">[BLOCKED]</td><td>0</td><td class="mu">19.3s</td></tr><tr><td>old-site.example</td><td class="er">[FAILED]</td><td>0</td><td class="mu">0.4s</td></tr></table>
+          <div class="foot"><div class="btn p">COPY EMAILS</div><div class="btn">copy details</div><div class="btn">send_to ▾</div><div class="btn">retry_failed</div></div></div>
+      </div></div></body></html>

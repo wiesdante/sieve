@@ -1,0 +1,33 @@
+name: Mockups
+
+on:
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install playwright && python -m playwright install --with-deps chromium
+      - name: Render
+        run: |
+          python design/mockups/build.py
+          python - <<'PY'
+          import base64
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page(viewport={"width": 1280, "height": 800}, device_scale_factor=1)
+              for name in ["a-terminal", "b-neon", "c-hud", "d-midnight"]:
+                  page.goto(f"file://{__import__('os').getcwd()}/design/mockups/{name}.html")
+                  page.wait_for_load_state("networkidle")
+                  page.wait_for_timeout(1500)
+                  data = base64.b64encode(page.screenshot(type="png")).decode()
+                  for i in range(0, len(data), 60000):
+                      print(f"SHOT {name}.png {data[i:i + 60000]}")
+              browser.close()
+          PY

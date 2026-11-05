@@ -1,0 +1,59 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"><style>*{box-sizing:border-box;margin:0;padding:0}html,body{width:1280px;height:800px;overflow:hidden}
+    body{background:#0a0c0d;color:#c9d1d3;font:15px 'Rajdhani',sans-serif;font-weight:500;display:flex;
+      background-image:linear-gradient(#ffffff06 1px,transparent 1px),linear-gradient(90deg,#ffffff06 1px,transparent 1px);background-size:32px 32px}
+    .side{width:236px;background:#0d1011;border-right:1px solid #262c2e;padding:18px 14px;display:flex;flex-direction:column}
+    .brand{font:700 20px 'Share Tech Mono';letter-spacing:6px;color:#ffb000}.brand small{display:block;font:12px 'Share Tech Mono';letter-spacing:2px;color:#5c6669;margin-top:4px}
+    .grp{font:12px 'Share Tech Mono';color:#5c6669;letter-spacing:2px;margin:22px 0 6px}
+    .it{display:flex;gap:10px;padding:7px 10px;color:#93a0a3;letter-spacing:1px;text-transform:uppercase;font-weight:600;font-size:14px}
+    .it em{font:12px 'Share Tech Mono';color:#3e4649;font-style:normal;width:20px}
+    .it.on{color:#0a0c0d;background:#ffb000}.it.on em{color:#0a0c0d}
+    .main{flex:1;padding:20px 26px;display:flex;flex-direction:column;gap:14px}
+    .top{display:flex;align-items:flex-end;gap:16px}.code{font:12px 'Share Tech Mono';color:#ffb000;letter-spacing:2px}
+    h1{font:700 30px 'Rajdhani';letter-spacing:4px;text-transform:uppercase;color:#eef3f4;line-height:1}
+    .top .sys{margin-left:auto;font:12px 'Share Tech Mono';color:#5c6669;text-align:right;letter-spacing:1px}.sys b{color:#3fd0a0;font-weight:400}
+    .bk{position:relative;border:1px solid #1e2426;background:#0d1011e6}
+    .bk::before,.bk::after{content:"";position:absolute;width:14px;height:14px;border:2px solid #ffb000}
+    .bk::before{top:-2px;left:-2px;border-right:none;border-bottom:none}.bk::after{bottom:-2px;right:-2px;border-left:none;border-top:none}
+    .bar{padding:10px 14px;display:flex;gap:18px;align-items:center;text-transform:uppercase;letter-spacing:1px;font-weight:600;font-size:14px}
+    .seg span{padding:5px 14px;border:1px solid #2f3739;color:#93a0a3}.seg span.on{background:#ffb00022;border-color:#ffb000;color:#ffb000}
+    .led{display:inline-block;width:8px;height:8px;background:#3fd0a0;margin-right:7px;box-shadow:0 0 8px #3fd0a0}.led.off{background:#3e4649;box-shadow:none}
+    .val{font:13px 'Share Tech Mono';color:#ffb000}.push{margin-left:auto}
+    .grid{flex:1;display:grid;grid-template-columns:350px 1fr;gap:16px;min-height:0}
+    .panel{padding:14px;display:flex;flex-direction:column;min-height:0}
+    .pt{display:flex;align-items:center;gap:10px;font:700 15px Rajdhani;letter-spacing:3px;text-transform:uppercase;color:#eef3f4;margin-bottom:12px}
+    .pt em{font:12px 'Share Tech Mono';color:#ffb000;font-style:normal;letter-spacing:1px}.pt i{margin-left:auto;font:12px 'Share Tech Mono';color:#5c6669;font-style:normal}
+    .ed{flex:1;font:13px 'JetBrains Mono';color:#c9d1d3;line-height:1.8;border-left:2px solid #262c2e;padding-left:12px}.ed b{color:#3e4649;font-weight:400;margin-right:10px}
+    .btn{padding:9px 14px;text-align:center;text-transform:uppercase;letter-spacing:2px;font-weight:700;font-size:14px;border:1px solid #3a4244;color:#c9d1d3}
+    .btn.p{background:#ffb000;color:#0a0c0d;border-color:#ffb000}
+    .row{display:flex;gap:10px;margin-top:12px}.row .p{flex:1}
+    .ticks{display:flex;gap:3px;margin-top:12px}.ticks i{flex:1;height:10px;background:#ffb000}.ticks i.o{background:#262c2e}
+    .pl{font:12px 'Share Tech Mono';color:#5c6669;margin-top:6px;letter-spacing:1px}
+    .read{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#1e2426;margin-bottom:12px}
+    .read div{background:#0d1011;padding:8px 10px}.read b{display:block;font:30px 'Share Tech Mono';color:#eef3f4;line-height:1}
+    .read span{font:11px 'Share Tech Mono';color:#5c6669;letter-spacing:2px}.read .g b{color:#3fd0a0}.read .a b{color:#ffb000}.read .r b{color:#ff5a4f}
+    .tabs{display:flex;gap:2px;margin-bottom:6px}.tabs span{padding:5px 12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;font-size:13px;color:#5c6669;border-bottom:2px solid #1e2426}
+    .tabs span.on{color:#ffb000;border-color:#ffb000}
+    table{width:100%;border-collapse:collapse}td{padding:6px 6px;border-bottom:1px solid #161b1c;font-size:14px}
+    th{font:11px 'Share Tech Mono';letter-spacing:2px;color:#5c6669;text-align:left;padding:4px 6px;font-weight:400}
+    .m{font:13px 'JetBrains Mono'}.s{font:12px 'Share Tech Mono';letter-spacing:1px}.g{color:#3fd0a0}.a{color:#ffb000}.r{color:#ff5a4f}.d{color:#5c6669}
+    .foot{display:flex;gap:8px;margin-top:auto;padding-top:12px}.foot .btn{padding:6px 12px;font-size:12px}
+    </style></head><body>
+    <div class="side"><div class="brand">SIEVE<small>DATA OPS // WIESDANTE</small></div>
+      <div class="grp">— SCRAPING</div><div class="it"><em>01</em>Website Finder</div><div class="it"><em>02</em>Link Collector</div><div class="it on"><em>03</em>Email Scraper</div><div class="it"><em>04</em>Link Extractor</div><div class="it"><em>05</em>Duplicate Remover</div><div class="it"><em>06</em>Keyword Filter</div><div class="it"><em>07</em>Text Stripper</div><div style="flex:1"></div><div class="grp">— SYSTEM</div>
+      <div class="it"><em>S1</em>Settings</div><div class="it"><em>S2</em>About</div></div>
+    <div class="main"><div class="top"><div><div class="code">MODULE 03 // CONTACT EXTRACTION</div><h1>Email Scraper</h1></div>
+        <div class="sys">SESSION ACTIVE · <b>ONLINE</b><br>UTC+3 07:42:19</div></div>
+      <div class="bar bk"><div class="seg"><span class="on">Standard</span><span>Direct</span></div>
+        <span><i class="led"></i>Filter junk</span><div class="btn" style="padding:3px 12px;font-size:12px">Rules</div>
+        <span><i class="led off"></i>Proxies</span><span class="push">Browser <span class="val">SMART</span></span><span>Threads <span class="val">10</span></span></div>
+      <div class="grid">
+        <div class="panel bk"><div class="pt"><em>01</em>Targets<i>09 SITES</i></div><div class="ed"><div><b>01</b>acme-defence.com</div><div><b>02</b>firma.com.tr</div><div><b>03</b>bird-aero.example</div><div><b>04</b>excalibur.cz</div><div><b>05</b>parked-domain.net</div><div><b>06</b>guarded.example</div><div><b>07</b>old-site.example</div><div><b>08</b>regula.example</div><div><b>09</b>hobbywing.example</div></div>
+          <div class="ticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i class="o"></i></div><div class="pl">PROGRESS 07/09 · T+00:24 · ETA 00:07</div>
+          <div class="row"><div class="btn p">Start</div><div class="btn">Stop</div></div></div>
+        <div class="panel bk"><div class="pt"><em>02</em>Results</div>
+          <div class="read"><div><b>07</b><span>SITES</span></div><div class="g"><b>07</b><span>EMAILS</span></div><div class="g"><b>04</b><span>FOUND</span></div>
+            <div class="a"><b>01</b><span>BLOCKED</span></div><div class="r"><b>01</b><span>FAILED</span></div></div>
+          <div class="tabs"><span>Emails</span><span>Details</span><span class="on">Sites</span><span>Rejected</span><span>Log</span></div>
+          <table><tr><th>SITE</th><th>STATUS</th><th>EMAILS</th><th>TIME</th></tr><tr><td class="m">acme-defence.com</td><td class="s g">■ FOUND</td><td class="s">2</td><td class="s d">1.2s</td></tr><tr><td class="m">firma.com.tr</td><td class="s g">■ FOUND</td><td class="s">1</td><td class="s d">0.9s</td></tr><tr><td class="m">bird-aero.example</td><td class="s g">■ FOUND</td><td class="s">1</td><td class="s d">2.4s</td></tr><tr><td class="m">excalibur.cz</td><td class="s g">■ FOUND</td><td class="s">2</td><td class="s d">1.6s</td></tr><tr><td class="m">parked-domain.net</td><td class="s d">■ PARKED</td><td class="s">0</td><td class="s d">0.6s</td></tr><tr><td class="m">guarded.example</td><td class="s a">■ BLOCKED</td><td class="s">0</td><td class="s d">19.3s</td></tr><tr><td class="m">old-site.example</td><td class="s r">■ FAILED</td><td class="s">0</td><td class="s d">0.4s</td></tr></table>
+          <div class="foot"><div class="btn p">Copy emails</div><div class="btn">Copy details</div><div class="btn">Send to ▾</div><div class="btn">Retry failed</div></div></div>
+      </div></div></body></html>
