@@ -6,6 +6,26 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-05
+
+### Added
+
+- **Link Collector** — collects the links on a list of pages, such as directories,
+  exhibitor lists or search results, ready to send to Email Scraper.
+  - Keep **all** links, only links to **other sites**, or only the **same site**.
+  - **Home pages only** turns every link into its site's home page, once per site.
+  - Follows **next page** links (`rel="next"`, Next, Sonraki, Weiter, », 다음…) to read
+    lists split over several pages, up to a limit you choose.
+  - Skips social, share, app-store and map links and file downloads, removes tracking
+    parameters (`utm_source`, `fbclid`…) and drops links matching your saved exclude
+    rules. Several exclude lists can be kept and switched.
+  - Every link comes with its text (often the company name) and the page it was found on.
+  - Requests to the same site are spaced out; a site that blocks gets a longer pause and
+    one more try. Smart browser mode opens blocked pages, pages built with JavaScript and
+    pages without links in your browser.
+  - Results are kept when the app closes; **Retry failed** puts blocked and failed pages
+    back into the list.
+
 ## [0.10.3] - 2026-11-05
 
 ### Fixed
@@ -286,7 +306,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.10.3...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/wiesdante/sieve/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/wiesdante/sieve/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/wiesdante/sieve/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/wiesdante/sieve/compare/v0.10.0...v0.10.1

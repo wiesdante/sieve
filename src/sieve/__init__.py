@@ -1,6 +1,6 @@
 """Sieve - a desktop toolkit for data scraping workflows."""
 
-__version__ = "0.10.3"
+__version__ = "0.11.0"
 
 APP_NAME = "Sieve"
 APP_ID = "Sieve"
