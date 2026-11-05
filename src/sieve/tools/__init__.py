@@ -17,10 +17,12 @@ def all_tools() -> list[Tool]:
     from sieve.tools.link_collector import LinkCollectorTool
     from sieve.tools.link_extractor import LinkExtractorTool
     from sieve.tools.text_stripper import TextStripperTool
+    from sieve.tools.website_finder import WebsiteFinderTool
 
     return [
-        EmailScraperTool(),
+        WebsiteFinderTool(),
         LinkCollectorTool(),
+        EmailScraperTool(),
         LinkExtractorTool(),
         DuplicateRemoverTool(),
         KeywordFilterTool(),

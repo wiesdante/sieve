@@ -135,6 +135,10 @@ class ProxyPool:
         self._cycle = itertools.cycle(self._proxies) if self._proxies else None
         self._lock = threading.Lock()
 
+    @property
+    def proxies(self) -> list[Proxy]:
+        return list(self._proxies)
+
     def __len__(self) -> int:
         return len(self._proxies)
 

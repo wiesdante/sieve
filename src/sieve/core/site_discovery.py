@@ -288,11 +288,21 @@ _MULTI_PART_SUFFIXES = frozenset({
 })
 
 
+#: Second-level labels that country domains use the way .com is used (mod.gov.sk, x.com.pk).
+_GENERIC_SECOND_LEVEL = frozenset({
+    "com", "co", "net", "org", "gov", "edu", "ac", "gob", "go", "or", "ne", "mil", "ltd", "plc",
+    "gen", "nic", "k12", "sch", "gv", "nhs",
+})
+
+
 def site_key(url_or_host: str) -> str:
     """The registrable domain: shop.acme.com.tr -> acme.com.tr, www.a.de -> a.de."""
     host = urlsplit(url_or_host).hostname if "://" in url_or_host else url_or_host
     labels = (host or "").lower().strip(".").split(".")
-    if len(labels) >= 3 and ".".join(labels[-2:]) in _MULTI_PART_SUFFIXES:
+    if len(labels) >= 3 and (
+        ".".join(labels[-2:]) in _MULTI_PART_SUFFIXES
+        or (labels[-2] in _GENERIC_SECOND_LEVEL and len(labels[-1]) == 2)
+    ):
         return ".".join(labels[-3:])
     return ".".join(labels[-2:])
 

@@ -112,6 +112,9 @@ def test_site_key_and_same_site():
     assert site_key("https://shop.acme.com.tr/x") == "acme.com.tr"
     assert site_key("www.firma.de") == "firma.de"
     assert site_key("https://a.b.co.uk") == "b.co.uk"
+    assert site_key("https://www.mod.gov.sk/") == "mod.gov.sk"
+    assert site_key("depo.gov.pk") == "depo.gov.pk"
+    assert site_key("mail.web.de") == "web.de"
     assert same_site("https://shop.acme.com", "https://www.acme.com/contact")
     assert not same_site("https://acme.com", "https://other.com")
 

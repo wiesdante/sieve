@@ -29,8 +29,13 @@ def main() -> int:
     parser.add_argument("--links", action="store_true", help="run Link Collector instead")
     parser.add_argument("--external", action="store_true", help="only links to other sites")
     parser.add_argument("--home", action="store_true", help="home pages only")
+    parser.add_argument("--find", action="store_true",
+                        help="run Website Finder; company names separated by |")
+    parser.add_argument("--region", default="")
     parser.add_argument("sites", nargs="+")
     args = parser.parse_args()
+    if args.find:
+        return check_find(" ".join(args.sites).split("|"), args.region)
     if args.links:
         return check_links(args)
 
@@ -56,6 +61,26 @@ def main() -> int:
         print(f"=> {result.status} via {result.via}: {', '.join(f.email for f in result.emails) or '-'}"
               + (f" ({result.error})" if result.error else ""))
     print(f"\nFinished {len(summary.results)}/{len(args.sites)} sites in {time.monotonic() - started:.1f}s")
+    return 0
+
+
+def check_find(names: list[str], region: str) -> int:
+    from sieve.core.website_finder import Connections, FinderSettings, Searcher, find_websites
+
+    names = [name.strip() for name in names if name.strip()]
+    connections = Connections(None, lambda _proxy: Searcher())
+    started = time.monotonic()
+    summary = find_websites(names, connections, FinderSettings(region=region), workers=1)
+    order = {name: index for index, name in enumerate(names)}
+    for result in sorted(summary.results, key=lambda r: order.get(r.company, 0)):
+        print(f"\n── {result.company}")
+        print("\n".join(result.log))
+        print(f"=> {result.status}: {result.website or '-'} {result.match} {result.error}")
+    found = sum(1 for r in summary.results if r.status == "found")
+    print(f"\nFound {found}/{len(names)} in {time.monotonic() - started:.1f}s")
+    print("\nSUMMARY")
+    for result in sorted(summary.results, key=lambda r: order.get(r.company, 0)):
+        print(f"{result.company:45} {result.status:12} {result.website}")
     return 0
 
 
