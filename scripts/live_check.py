@@ -30,8 +30,11 @@ def main() -> int:
     parser.add_argument("--pages", type=int, default=1, help="pages to read per entry (Link Collector)")
     parser.add_argument("--external", action="store_true", help="only links to other sites")
     parser.add_argument("--home", action="store_true", help="home pages only")
+    parser.add_argument("--debug-pagination", action="store_true", help="print the pagination markup")
     parser.add_argument("sites", nargs="+")
     args = parser.parse_args()
+    if args.debug_pagination:
+        return debug_pagination(args.sites)
     if args.links:
         return check_links(args)
 
@@ -57,6 +60,33 @@ def main() -> int:
         print(f"=> {result.status} via {result.via}: {', '.join(f.email for f in result.emails) or '-'}"
               + (f" ({result.error})" if result.error else ""))
     print(f"\nFinished {len(summary.results)}/{len(args.sites)} sites in {time.monotonic() - started:.1f}s")
+    return 0
+
+
+def debug_pagination(pages: list[str]) -> int:
+    import re
+
+    from bs4 import BeautifulSoup
+
+    from sieve.core.link_collector import analyze_pagination
+
+    hint = re.compile(r"next|prev|older|newer|more|pag|»|«|›|‹", re.IGNORECASE)
+    for url in pages:
+        result = HttpFetcher().fetch(url)
+        print(f"\n── {url} (HTTP {result.status}, {len(result.text or '')} bytes) {result.error or ''}")
+        soup = BeautifulSoup(result.text or "", "html.parser")
+        for tag in soup.find_all(["a", "link", "button"]):
+            text = " ".join(tag.get_text(" ", strip=True).split())[:40]
+            attrs = {key: tag.get(key) for key in ("href", "rel", "class", "aria-label", "aria-current", "title")
+                     if tag.get(key)}
+            parent = tag.parent
+            parent_info = f"{parent.name}.{'.'.join(parent.get('class') or [])}" if parent else ""
+            blob = f"{text} {attrs}"
+            if hint.search(blob) or text.isdigit():
+                print(f"   <{tag.name}> {text!r} {attrs} in {parent_info}")
+        info = analyze_pagination(soup, result.url)
+        print(f"   => next={info.next_url} ({info.next_how}) current={info.current} highest={info.highest} "
+              f"numbered={sorted(info.numbered)[:12]} load_more={info.load_more}")
     return 0
 
 
