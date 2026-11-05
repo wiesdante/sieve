@@ -61,7 +61,12 @@ def main() -> int:
 
 
 def check_links(args) -> int:
-    from sieve.core.link_collector import EXTERNAL, CollectOptions, LinkFilterSettings, collect_links
+    from sieve.core.link_collector import (
+        EXTERNAL,
+        CollectOptions,
+        LinkFilterSettings,
+        collect_links,
+    )
 
     filters = LinkFilterSettings(scope=EXTERNAL if args.external else "all", home_pages_only=args.home)
     options = CollectOptions(filters=filters, workers=min(5, len(args.sites)), browser=args.browser,
