@@ -320,3 +320,145 @@ def test_thin_page_with_scripts_is_opened_in_the_browser():
         browser_for=lambda _i: browser,
     ).results[0]
     assert len(result.links) == 4 and result.via == "both"
+
+
+# ------------------------------------------------- pagination completeness
+from sieve.core.link_collector import PARTIAL, expand_range  # noqa: E402
+
+
+def numbered_site(count, with_next=True, pager_class="pagination", break_at=None, cap=None):
+    """A list of ``count`` pages at /list?page=N, one company per page."""
+    pages = {}
+    shown = cap or count
+    for number in range(1, count + 1):
+        links = "".join(
+            f'<a href="/list?page={n}"{" aria-current=page" if n == number else ""}>{n}</a>'
+            for n in range(1, shown + 1)
+        )
+        nxt = f'<a href="/list?page={number + 1}">Next</a>' if with_next and number < count else ""
+        pages[f"https://dir.com/list?page={number}"] = (
+            f'<a href="https://company{number}.com/">Company {number}</a>'
+            f'<div class="{pager_class}">{links}{nxt}</div>'
+        )
+    if break_at:
+        del pages[f"https://dir.com/list?page={break_at}"]
+    return Site(pages)
+
+
+def run_list(site, max_pages=50):
+    return collect_links(["https://dir.com/list?page=1"], lambda _i: site,
+                         CollectOptions(max_pages=max_pages, host_interval=0, host_penalty=0,
+                                        browser=BROWSER_OFF)).results[0]
+
+
+def test_reads_every_page_and_reports_the_last_one():
+    result = run_list(numbered_site(5))
+    assert [link.url for link in result.links] == [f"https://company{n}.com/" for n in range(1, 6)]
+    assert result.status == READ and result.pages_read == 5 and result.expected_pages == 5
+    assert result.note == "Last page reached (5 of 5 pages read)"
+
+
+def test_follows_page_numbers_when_there_is_no_next_link():
+    result = run_list(numbered_site(4, with_next=False))
+    assert result.pages_read == 4 and result.status == READ
+    assert any("Next page (page number)" in line for line in result.log)
+
+
+def test_a_page_that_fails_midway_marks_the_entry_partial():
+    result = run_list(numbered_site(5, break_at=3))
+    assert result.status == PARTIAL and result.pages_read == 2
+    assert "page 3 could not be read" in result.note
+
+
+def test_reaching_the_limit_with_more_pages_left_is_partial():
+    result = run_list(numbered_site(8), max_pages=3)
+    assert result.status == PARTIAL and result.pages_read == 3
+    assert result.note == "Stopped at the limit of 3 pages; there are more pages (the list has 8)"
+
+
+def test_single_page_mode_mentions_that_more_pages_exist():
+    result = run_list(numbered_site(8), max_pages=1)
+    assert result.status == READ
+    assert "more pages" in result.note
+
+
+def test_gap_between_page_numbers_and_missing_next_is_reported():
+    class Gap(Site):
+        pass
+
+    site = numbered_site(6)
+    # page 3 shows no next link and no link to page 4, but says there are 6 pages
+    site.pages["https://dir.com/list?page=3"] = (
+        '<a href="https://company3.com/">C3</a><p>Page 3 of 6</p>'
+        '<div class="pagination"><a href="/list?page=1">1</a><a href="/list?page=2">2</a></div>'
+    )
+    result = run_list(site)
+    assert result.status == PARTIAL and result.pages_read == 3
+    assert "goes up to page 6" in result.note and "page 4" in result.note
+
+
+def test_site_repeating_its_last_page_is_treated_as_the_end():
+    site = numbered_site(3)
+    # page 3 has a next link, but page 4 shows the same list as page 3
+    site.pages["https://dir.com/list?page=3"] += '<a href="/list?page=4">Next</a>'
+    site.pages["https://dir.com/list?page=4"] = site.pages["https://dir.com/list?page=3"]
+    result = run_list(site)
+    assert result.pages_read == 4 and result.status == READ
+    assert "repeated" in result.note
+    assert len(result.links) == 3
+
+
+def test_load_more_button_is_reported():
+    site = Site({"https://dir.com/list?page=1": '<a href="https://a.com/">A</a><button>Load more</button>'})
+    result = run_list(site)
+    assert result.status == PARTIAL and "button" in result.note
+
+
+def test_page_x_of_y_text_sets_the_expected_count():
+    html = '<a href="https://a.com/">A</a><span>Sayfa 2 / 9</span><a href="/l?p=3">Sonraki</a>'
+    info = parse_links(html, "https://dir.com/l?p=2").pagination
+    assert info.highest == 9 and info.current == 2 and info.next_url == "https://dir.com/l?p=3"
+
+
+def test_results_count_text_sets_the_expected_count():
+    html = '<p>Showing 21–40 of 95 results</p><a href="https://a.com/">A</a>'
+    assert parse_links(html, "https://dir.com/l").pagination.highest == 5
+
+
+def test_numbers_outside_a_pager_are_not_page_numbers():
+    html = ('<div class="page-content"><a href="/note/1">1</a><a href="/note/2">2</a>'
+            '<a href="/year/2024">2024</a></div><p>10-12/2024</p>')
+    info = parse_links(html, "https://dir.com/article").pagination
+    assert info.highest is None and info.next_url is None
+
+
+def test_page_range_expands_in_order():
+    assert expand_range("https://dir.com/list?page={1-3}") == [
+        "https://dir.com/list?page=1", "https://dir.com/list?page=2", "https://dir.com/list?page=3"
+    ]
+    assert parse_pages("dir.com/p/{2..4}/") == [
+        "https://dir.com/p/2/", "https://dir.com/p/3/", "https://dir.com/p/4/"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("link", "current", "expected"),
+    [
+        ("https://news.com/news?p=2", "https://news.com/news", True),
+        ("https://blog.com/page/3/", "https://blog.com/page/2/", True),
+        ("https://blog.com/page/2/", "https://blog.com/", True),
+        ("https://dir.com/list?cat=5&page=4", "https://dir.com/list?cat=5&page=3", True),
+        ("https://dir.com/list?cat=6&page=4", "https://dir.com/list?cat=5&page=3", False),
+        ("https://dir.com/list?page=5", "https://dir.com/list?page=3", False),
+    ],
+)
+def test_next_address(link, current, expected):
+    from sieve.core.link_collector import is_next_address
+
+    assert is_next_address(link, current) is expected
+
+
+def test_more_link_is_followed_by_its_address():
+    html = '<a href="https://a.com/">A</a><a href="news?p=2" class="morelink">More</a>'
+    info = parse_links(html, "https://news.com/news").pagination
+    assert info.next_url == "https://news.com/news?p=2" and info.next_how == "next address"
