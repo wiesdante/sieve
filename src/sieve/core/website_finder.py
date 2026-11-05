@@ -46,13 +46,18 @@ MATCH_DOMAIN = "domain"
 MATCH_TITLE = "title"
 
 RESULT_LIMIT = 10
-ATTEMPTS = 4
+ATTEMPTS = 3
 #: Rest between two searches through the same proxy, and without proxies.
 PROXY_COOLDOWN = 10.0
 DIRECT_COOLDOWN = 6.0
-#: Rest after DuckDuckGo rate limited a proxy (or the direct connection).
-LIMIT_PENALTY = 60.0
-DIRECT_LIMIT_PENALTY = 90.0
+#: Rest after DuckDuckGo rate limited a proxy (or the direct connection); doubles each
+#: time in a row, up to MAX_PENALTY.
+LIMIT_PENALTY = 30.0
+DIRECT_LIMIT_PENALTY = 45.0
+MAX_PENALTY = 240.0
+#: When every connection has been limited this many times in a row, the remaining
+#: companies are reported as rate limited instead of waiting on (Retry failed later).
+GIVE_UP_AFTER_LIMITS = 3
 #: A proxy that fails this many times in a row is dropped for the rest of the run.
 DEAD_AFTER = 3
 COMPANY_HARD_LIMIT = 900.0
@@ -547,6 +552,9 @@ class Connections:
         self._busy = [False] * len(entries)
         self._failures = [0] * len(entries)
         self._dead = [False] * len(entries)
+        self._limits = [0] * len(entries)
+        #: DuckDuckGo keeps limiting every connection; the run should stop searching.
+        self.exhausted = False
         self._cooldown = PROXY_COOLDOWN if proxies else DIRECT_COOLDOWN
         self._penalty = LIMIT_PENALTY if proxies else DIRECT_LIMIT_PENALTY
         self._lock = threading.Condition()
@@ -563,7 +571,7 @@ class Connections:
             while True:
                 if cancelled and cancelled():
                     return None
-                if all(self._dead):
+                if all(self._dead) or self.exhausted:
                     return None
                 now = time.monotonic()
                 ready = [i for i in range(len(self._searchers))
@@ -589,7 +597,12 @@ class Connections:
             jitter = random.uniform(0.85, 1.35)
             if outcome == "limited":
                 self._failures[slot] = 0
-                self._ready_at[slot] = time.monotonic() + self._penalty * jitter
+                self._limits[slot] += 1
+                penalty = min(self._penalty * 2 ** (self._limits[slot] - 1), MAX_PENALTY)
+                self._ready_at[slot] = time.monotonic() + penalty * jitter
+                alive = [i for i in range(len(self._searchers)) if not self._dead[i]]
+                if alive and all(self._limits[i] >= GIVE_UP_AFTER_LIMITS for i in alive):
+                    self.exhausted = True
             elif outcome == "error":
                 self._failures[slot] += 1
                 self._ready_at[slot] = time.monotonic() + self._cooldown * jitter
@@ -597,6 +610,7 @@ class Connections:
                     self._dead[slot] = True
             else:
                 self._failures[slot] = 0
+                self._limits[slot] = 0
                 self._ready_at[slot] = time.monotonic() + self._cooldown * jitter
             self._lock.notify_all()
 
@@ -713,6 +727,10 @@ def find_website(
         if slot is None:
             if cancelled and cancelled():
                 last_problem = last_problem or "Stopped"
+            elif connections.exhausted:
+                limited = True
+                last_problem = ("DuckDuckGo keeps limiting every connection; retry later"
+                                + ("" if connections.using_proxies else " or turn on proxies"))
             else:
                 last_problem = "Every proxy failed; check the proxy list in Settings"
             break

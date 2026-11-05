@@ -354,3 +354,29 @@ def test_parse_companies_removes_repeats():
 
 def test_direct_connection_rests_longer_than_proxies():
     assert wf.DIRECT_COOLDOWN < wf.PROXY_COOLDOWN or wf.DIRECT_COOLDOWN > 0
+
+
+def test_run_gives_up_quickly_when_every_connection_keeps_being_limited():
+    limited = SearchPage("limited", detail="DuckDuckGo asked to slow down (HTTP 202)")
+
+    class AlwaysLimited:
+        def search(self, query, region="", lite=False):
+            return limited, None
+
+    conns = Connections(None, lambda _e: AlwaysLimited())
+    conns._cooldown = 0
+    conns._penalty = 0.01
+    started = time.monotonic()
+    summary = find_websites([f"Company {n}" for n in range(20)], conns, SETTINGS, workers=1)
+    assert time.monotonic() - started < 5
+    assert {r.status for r in summary.results} == {RATE_LIMITED}
+    assert "retry later or turn on proxies" in summary.results[-1].error
+
+
+def test_a_success_resets_the_limit_count():
+    conns = connections([FakeSearcher([])], penalty=0.0)
+    for _ in range(2):
+        conns.release(conns.acquire(), "limited")
+    conns.release(conns.acquire(), "ok")
+    conns.release(conns.acquire(), "limited")
+    assert not conns.exhausted

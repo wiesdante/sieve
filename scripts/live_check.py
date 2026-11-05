@@ -23,7 +23,7 @@ from sieve.core.email_scraper import (  # noqa: E402
 
 
 def main() -> int:
-    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
     parser = argparse.ArgumentParser()
     parser.add_argument("--browser", choices=BROWSER_MODES, default="smart")
     parser.add_argument("--links", action="store_true", help="run Link Collector instead")
@@ -70,12 +70,13 @@ def check_find(names: list[str], region: str) -> int:
     names = [name.strip() for name in names if name.strip()]
     connections = Connections(None, lambda _proxy: Searcher())
     started = time.monotonic()
-    summary = find_websites(names, connections, FinderSettings(region=region), workers=1)
-    order = {name: index for index, name in enumerate(names)}
-    for result in sorted(summary.results, key=lambda r: order.get(r.company, 0)):
+    def show(result, _total) -> None:
         print(f"\n── {result.company}")
         print("\n".join(result.log))
-        print(f"=> {result.status}: {result.website or '-'} {result.match} {result.error}")
+        print(f"=> {result.status}: {result.website or '-'} {result.match} {result.error}", flush=True)
+
+    summary = find_websites(names, connections, FinderSettings(region=region), workers=1, progress=show)
+    order = {name: index for index, name in enumerate(names)}
     found = sum(1 for r in summary.results if r.status == "found")
     print(f"\nFound {found}/{len(names)} in {time.monotonic() - started:.1f}s")
     print("\nSUMMARY")
