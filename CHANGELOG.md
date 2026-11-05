@@ -6,6 +6,25 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-11-05
+
+### Fixed
+
+- A parking redirect seen only in the browser now marks the site **Parked** instead of
+  **No emails**.
+- A page that redirects to one already read (`/contact?ref=…` → `/contact/`) is not read again.
+- The browser waits when a bot check redirects the page while it is being read, instead of
+  failing with "the page is navigating".
+
+### Changed
+
+- The browser keeps a site's cookies from page to page, so a passed bot check or cookie test
+  is not repeated on every page. Sites like this are scanned faster and more reliably.
+- In Smart mode, a site that times out gets one try in the browser, since some protections
+  leave non-browser requests hanging. Refused connections and missing domains are still not
+  retried.
+- After addresses are found, the scan stops once two more contact pages add nothing new.
+
 ## [0.10.2] - 2026-11-05
 
 ### Fixed
@@ -267,7 +286,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.10.3...HEAD
+[0.10.3]: https://github.com/wiesdante/sieve/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/wiesdante/sieve/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/wiesdante/sieve/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/wiesdante/sieve/compare/v0.9.0...v0.10.0
