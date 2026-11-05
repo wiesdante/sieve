@@ -135,6 +135,9 @@ class _Job:
     quick: bool
     proxy: dict | None
     future: Future
+    #: Cookies and storage from the site's previous pages, so a passed bot check or
+    #: cookie test (``?ckattempt=1``) is not repeated on every page.
+    state: dict | None = None
 
 
 class BrowserPool:
@@ -195,21 +198,27 @@ class BrowserPool:
         return self.error is None
 
     def fetch(self, url: str, quick: bool = False, proxy: dict | None = None) -> FetchResult:
+        return self.fetch_with_state(url, quick, proxy)[0]
+
+    def fetch_with_state(
+        self, url: str, quick: bool = False, proxy: dict | None = None, state: dict | None = None
+    ) -> tuple[FetchResult, dict | None]:
+        """Open ``url`` with the cookies in ``state``; returns the page and the new state."""
         if self._closed:
-            return FetchResult(url, error="Browser was closed")
+            return FetchResult(url, error="Browser was closed"), state
         if self.error:
-            return FetchResult(url, error=f"Browser not available: {self.error}")
+            return FetchResult(url, error=f"Browser not available: {self.error}"), state
         self._start()
         future: Future = Future()
-        self._jobs.put(_Job(url, quick, proxy, future))
+        self._jobs.put(_Job(url, quick, proxy, future, state))
         try:
             return future.result(timeout=PAGE_TIMEOUT)
         except TimeoutError:
             if not future.cancel():  # the page is loading and froze its browser
                 self._replace_stuck_worker()
-            return FetchResult(url, error="Browser timed out")
+            return FetchResult(url, error="Browser timed out"), state
         except Exception as exc:  # worker failure
-            return FetchResult(url, error=f"Browser error: {exc}")
+            return FetchResult(url, error=f"Browser error: {exc}"), state
 
     # ---------------------------------------------------------------- worker
     def _launch(self, playwright):
@@ -262,7 +271,7 @@ class BrowserPool:
                     try:
                         job.future.set_result(self._load(browser, job))
                     except Exception as exc:
-                        job.future.set_result(FetchResult(job.url, error=_short(exc)))
+                        job.future.set_result((FetchResult(job.url, error=_short(exc)), job.state))
         finally:
             try:
                 browser.close()
@@ -278,9 +287,11 @@ class BrowserPool:
             except queue.Empty:
                 return
             if job is not None and job.future.set_running_or_notify_cancel():
-                job.future.set_result(FetchResult(job.url, error=f"Browser not available: {message}"))
+                job.future.set_result(
+                    (FetchResult(job.url, error=f"Browser not available: {message}"), job.state)
+                )
 
-    def _load(self, browser, job: _Job) -> FetchResult:
+    def _load(self, browser, job: _Job) -> tuple[FetchResult, dict | None]:
         context_options: dict = {
             "ignore_https_errors": True,
             "locale": "en-US",
@@ -290,6 +301,8 @@ class BrowserPool:
             context_options["proxy"] = job.proxy
         if self._user_agent:
             context_options["user_agent"] = self._user_agent
+        if job.state:
+            context_options["storage_state"] = job.state
         context = browser.new_context(**context_options)
         try:
             context.route(
@@ -311,7 +324,11 @@ class BrowserPool:
                 if not _is_challenge(page):
                     status = 200
                     _settle(page, quick=True)
-            return FetchResult(page.url, text=page.content(), status=status)
+            result = FetchResult(page.url, text=page.content(), status=status)
+            state = job.state
+            with contextlib.suppress(Exception):
+                state = context.storage_state()
+            return result, state
         finally:
             context.close()
 
@@ -359,6 +376,7 @@ class BrowserFetcher:
     def __init__(self, pool: BrowserPool, proxy: dict | None = None) -> None:
         self._pool = pool
         self._proxy = proxy
+        self._state: dict | None = None
 
     @property
     def available(self) -> bool:
@@ -369,4 +387,5 @@ class BrowserFetcher:
         return self._pool.name
 
     def fetch(self, url: str, quick: bool = False) -> FetchResult:
-        return self._pool.fetch(url, quick=quick, proxy=self._proxy)
+        result, self._state = self._pool.fetch_with_state(url, quick, self._proxy, self._state)
+        return result

@@ -43,6 +43,20 @@ ROUTES = {"/": APP_PAGE, "/frozen": FROZEN_PAGE, "/who": WHO_PAGE}
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
+        if self.path == "/set-cookie":
+            self.send_response(200)
+            self.send_header("Set-Cookie", "passed=yes; Path=/")
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<p>ok</p>")
+            return
+        if self.path == "/read-cookie":
+            body = f"<p>cookie={self.headers.get('Cookie', '')}</p>".encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         body = ROUTES.get(self.path, b"missing")
         self.send_response(200 if self.path in ROUTES else 404)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -118,3 +132,9 @@ def test_frozen_page_is_given_up_and_the_pool_keeps_working(server, monkeypatch)
         started = time.monotonic()
         single.close()
         assert time.monotonic() - started < 7
+
+
+def test_cookies_are_kept_between_pages_of_a_site(server, pool):
+    fetcher = BrowserFetcher(pool)
+    fetcher.fetch(server + "/set-cookie")
+    assert "passed=yes" in fetcher.fetch(server + "/read-cookie").text

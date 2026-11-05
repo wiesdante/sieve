@@ -312,8 +312,12 @@ class _SiteScan:
         options: ScrapeOptions,
         cancelled: Callable[[], bool] | None,
         page_fetcher: Fetcher | None = None,
+        try_variants: bool = True,
     ) -> None:
         self.result = SiteResult(site)
+        self._try_variants = try_variants
+        #: The last page fetched redirected to a page that was already opened.
+        self._landed_on_seen_page = False
         #: Pages are opened with ``page_fetcher`` (a browser, when used); robots.txt,
         #: sitemaps and scripts always go through the fast plain fetcher.
         self._fetcher = fetcher
@@ -348,6 +352,10 @@ class _SiteScan:
         self._visited.add(page_key(url))
         fetcher = self._page_fetcher if page else self._fetcher
         result = fetcher.fetch(url, quick=quick)
+        final_key = page_key(result.url)
+        self._landed_on_seen_page = (
+            page and result.ok and final_key != page_key(url) and final_key in self._visited
+        )
         if page and result.ok and result.status < 400:
             self._visited.add(page_key(result.url))
             self._opened.add(page_key(result.url, ignore_language=True))
@@ -443,9 +451,10 @@ class _SiteScan:
     def _open_first_page(self) -> tuple[FetchResult, str]:
         site = self.result.site
         attempts = [site]
-        if site.lower().startswith("https://"):
-            attempts.append("http://" + site[8:])
-        attempts.append(toggle_www(site))
+        if self._try_variants:
+            if site.lower().startswith("https://"):
+                attempts.append("http://" + site[8:])
+            attempts.append(toggle_www(site))
         last = FetchResult(site, error="No response")
         dead_hosts: set[str] = set()
         tried = site
@@ -533,6 +542,7 @@ class _SiteScan:
     def _crawl(self, home_url: str, languages: tuple[str, ...]) -> None:
         sitemap_checked = False
         guessed = False
+        fruitless = 0  # strong pages that added nothing after addresses were found
         while not self._out_of_time() and self._budget_left():
             best = -self._queue[0][0] if self._queue else 0
             if self.result.emails and best < STRONG_PAGE:
@@ -552,11 +562,19 @@ class _SiteScan:
             score = -neg_score
             if self._already_seen(url) or (self.result.emails and score < STRONG_PAGE):
                 continue
-            if self._visit(url, score, why, home_url, languages) and score >= STRONG_PAGE:
-                return
+            had_emails = bool(self.result.emails)
+            if self._visit(url, score, why, home_url, languages):
+                if score >= STRONG_PAGE:
+                    return
+            elif had_emails:
+                fruitless += 1
+                if fruitless >= 2:
+                    return  # more contact pages in other languages rarely add anything
 
     def _visit(self, url: str, score: int, why: str, home_url: str, languages: tuple[str, ...]) -> bool:
         page = self._fetch(url, quick=why == "guess")
+        if self._landed_on_seen_page:
+            return False  # e.g. /contact?ref=menu redirecting to the /contact/ already read
         if not page.ok:
             if why != "guess":
                 self.log("WARN", f"Could not open {url} ({page.error})")
@@ -646,8 +664,9 @@ def _needs_browser(scan: _SiteScan) -> bool:
         return scan.js_rendered
     if result.status == FAILED:
         error = result.error.lower()
-        # A browser cannot fix a missing domain or a server that does not answer.
-        return not any(word in error for word in ("domain not found", "timed out", "could not connect"))
+        # A browser cannot fix a missing domain or a refused connection. A timeout is worth
+        # one try: some protections leave non-browser clients hanging (rafael.co.il).
+        return not any(word in error for word in ("domain not found", "could not connect", "refused"))
     return False
 
 
@@ -679,7 +698,10 @@ def scan_site(
         site_time_limit=min(options.site_time_limit, BROWSER_RETRY_TIME_LIMIT),
         page_budget=min(options.page_budget, BROWSER_RETRY_PAGE_BUDGET),
     )
-    second = _run_scan(_SiteScan(site, fetcher, email_filter, retry_options, cancelled, browser))
+    # After a timeout the plain scan already tried the other address variants.
+    timed_out = first.status == FAILED and "timed out" in first.error.lower()
+    second = _run_scan(_SiteScan(site, fetcher, email_filter, retry_options, cancelled, browser,
+                                 try_variants=not timed_out))
     browser_name = getattr(browser, "name", "the browser")
     log_lines = [*first.log, f"── Retrying in {browser_name}", *second.log]
     if second.error.startswith("Browser not available"):
@@ -690,6 +712,8 @@ def scan_site(
     better = (
         _STATUS_RANK[second.status] < _STATUS_RANK[first.status]
         or (second.status == first.status and len(second.emails) > len(first.emails))
+        # Seeing a parking redirect only in the browser is still the real answer.
+        or (second.status == PARKED and first.status == EMPTY)
     )
     chosen = second if better else first
     chosen.via = "browser" if better else "both"

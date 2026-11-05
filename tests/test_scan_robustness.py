@@ -201,3 +201,92 @@ def test_retry_after_header_does_not_stall_the_fetch():
         assert result.status == 503
     finally:
         httpd.shutdown()
+
+
+# ------------------------------------------------------------ second 67-site run
+from sieve.core.email_scraper import BROWSER_SMART  # noqa: E402
+
+
+def test_parking_seen_only_in_the_browser_wins_over_no_emails():
+    plain = Site({"https://ushgroup.net": "<p>Welcome</p>"})
+    browser = Site({"https://ushgroup.net": (
+        "http://findonlineresults.com/?dn=ushgroup.net", "<p>Related searches</p>", 200
+    )})
+    result = scan_site("https://ushgroup.net", plain, options=ScrapeOptions(browser=BROWSER_SMART),
+                       browser=browser)
+    assert result.status == PARKED and result.via == "browser"
+
+
+def test_timed_out_site_gets_one_browser_try_without_variants():
+    class Dead:
+        def fetch(self, url, quick=False):
+            return FetchResult(url, error="Connection timed out")
+
+    browser = Site({"https://www.rafael.co.il": "<p>Write to info@rafael.co.il</p>"})
+    result = scan_site("https://www.rafael.co.il", Dead(), options=ScrapeOptions(browser=BROWSER_SMART),
+                       browser=browser)
+    assert result.status == FOUND
+    assert browser.requested[0] == "https://www.rafael.co.il"
+    assert not any(url.startswith("http://") for url in browser.requested)
+
+
+def test_refused_connection_is_not_retried_in_the_browser():
+    class Refused:
+        def fetch(self, url, quick=False):
+            return FetchResult(url, error="Connection refused")
+
+    browser = Site({})
+    scan_site("https://down.com", Refused(), options=ScrapeOptions(browser=BROWSER_SMART), browser=browser)
+    assert browser.requested == []
+
+
+def test_redirect_to_an_already_read_page_is_not_read_again():
+    class Redirecting(Site):
+        def fetch(self, url, quick=False):
+            if url == "https://gosage.com/contact?ref=footer":
+                self.requested.append(url)
+                return FetchResult("https://gosage.com/contact/", text="<p>again</p>", status=200)
+            return super().fetch(url, quick)
+
+    site = Redirecting({
+        "https://gosage.com": '<a href="/contact/">Contact</a><a href="/contact?ref=footer">Contact us</a>',
+        "https://gosage.com/contact/": "<p>No address</p>",
+    })
+    result = scan_site("https://gosage.com", site)
+    assert sum("Visited https://gosage.com/contact/" in line for line in result.log) == 1
+
+
+def test_scan_stops_after_two_contact_pages_add_nothing():
+    site = Site({
+        "https://yugo.com": '<p>office@yugo.com</p><a href="/en/contact">Contact</a>'
+                            '<a href="/kontakt">Kontakt</a><a href="/lat/kontakt">Kontakt</a>'
+                            '<a href="/sr/kontakt-nas">Kontakt nas</a>',
+        "https://yugo.com/en/contact": "<p>Call us</p>",
+        "https://yugo.com/kontakt": "<p>Pozovite</p>",
+        "https://yugo.com/lat/kontakt": "<p>Pozovite</p>",
+        "https://yugo.com/sr/kontakt-nas": "<p>Pozovite</p>",
+    })
+    result = scan_site("https://yugo.com", site)
+    assert result.status == FOUND
+    assert result.pages == 3
+
+
+def test_browser_fetcher_carries_cookies_between_pages():
+    from sieve.core.browser import BrowserFetcher
+
+    class Pool:
+        name = "Fake"
+        available = True
+
+        def __init__(self):
+            self.seen_states = []
+
+        def fetch_with_state(self, url, quick, proxy, state):
+            self.seen_states.append(state)
+            return FetchResult(url, text="", status=200), {"cookies": [{"name": "ck", "value": "1"}]}
+
+    pool = Pool()
+    fetcher = BrowserFetcher(pool)
+    fetcher.fetch("https://bontech.kr/")
+    fetcher.fetch("https://bontech.kr/contact")
+    assert pool.seen_states == [None, {"cookies": [{"name": "ck", "value": "1"}]}]

@@ -388,7 +388,7 @@ def page_key(url: str, ignore_language: bool = False) -> str:
     /contact-us count as the same page."""
     parts = urlsplit(url)
     host = (parts.hostname or "").lower().removeprefix("www.")
-    path = parts.path.rstrip("/")
+    path = parts.path.rstrip("/").lower()
     if ignore_language:
         path = _LANGUAGE_FOLDER.sub("", path)
     return f"{host}{path or '/'}" + (f"?{parts.query}" if parts.query else "")
