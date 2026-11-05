@@ -6,6 +6,33 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-05
+
+### Added
+
+- **Browser mode in Email Scraper** — sites can be opened in the Microsoft Edge that comes with
+  Windows (Google Chrome as a fallback), so pages built with JavaScript and simple bot checks
+  no longer come back empty. Nothing extra to install.
+  - **Smart** (default): a plain request first; the browser only for sites that were blocked,
+    had no addresses, only showed a contact form on a JavaScript page, or failed to load.
+  - **Always**: every page in the browser. **Off**: plain requests only.
+  - Each site keeps its own proxy in the browser too.
+  - A new **Via** column shows whether a result came from a plain request or the browser.
+- **Contact pages in 25+ languages** — French, Italian, Spanish, Portuguese, Dutch, Polish,
+  Czech, Hungarian, Romanian, Serbian/Croatian, Baltic and Nordic languages, Russian, Greek,
+  Hebrew, Arabic, Vietnamese, Indonesian, Korean, Japanese and Chinese, alongside English,
+  Turkish and German. Links are scored in every language, whatever the site's language.
+
+### Fixed
+
+- Addresses hidden with ROT13 or written backwards are decoded.
+- Addresses found only in a site's scripts at another domain (for example a library author's
+  address in bundled code) are no longer reported.
+- `info@www.example.com` is corrected to `info@example.com`.
+- HTTP 401 and 451 answers count as **Blocked** instead of **Failed**.
+- A site that times out is no longer retried with every `http`/`www` variant, which took
+  over a minute for a single unreachable site.
+
 ## [0.9.0] - 2026-11-04
 
 ### Changed
@@ -199,7 +226,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/wiesdante/sieve/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/wiesdante/sieve/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/wiesdante/sieve/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/wiesdante/sieve/compare/v0.6.0...v0.7.0
