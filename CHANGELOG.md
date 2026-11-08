@@ -15,6 +15,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - New README with screenshots, and how to ask for access.
 - The license text now matches a public, view-only repository.
 
+### Fixed
+
+- Website Finder retries a failed search through a different proxy when there is one,
+  instead of possibly landing on the same failing proxy again.
+
 ## [0.14.0] - 2026-11-08
 
 ### Added

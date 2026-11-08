@@ -298,9 +298,12 @@ def test_broken_proxy_is_dropped_and_others_keep_working():
     broken = FakeSearcher(["Proxy error"] * 20)
     working = FakeSearcher([SearchPage("results", results(("https://www.aselsan.com/", "A")))] * 20)
     conns = connections([broken, working])
-    names = ["Aselsan"] * 1
-    for _ in range(6):
-        find_website(names[0], conns, SETTINGS)
+    # Connections are picked at random; keep searching until the broken one has failed
+    # often enough, and make sure the searches themselves keep succeeding.
+    for _ in range(200):
+        assert find_website("Aselsan", conns, SETTINGS).status == FOUND
+        if conns.alive() == 1:
+            break
     assert conns.alive() == 1
 
 
@@ -430,3 +433,13 @@ def test_status_tells_what_the_run_waits_for():
     time.sleep(0.2)
     assert "slow down" in conns.status.text
     waiter.join(3)
+
+
+def test_a_retry_uses_another_connection():
+    first = FakeSearcher(["Proxy error"])
+    second = FakeSearcher([SearchPage("results", results(("https://www.aselsan.com/", "A")))])
+    conns = connections([first, second])
+    conns.acquire = (lambda original: lambda cancelled=None, avoid=frozenset(): (
+        0 if not avoid else original(cancelled, avoid)))(conns.acquire)
+    result = find_website("Aselsan", conns, SETTINGS)
+    assert result.status == FOUND and len(first.calls) == 1 and len(second.calls) == 1

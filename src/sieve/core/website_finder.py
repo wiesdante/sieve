@@ -572,8 +572,14 @@ class Connections:
     def alive(self) -> int:
         return sum(not dead for dead in self._dead)
 
-    def acquire(self, cancelled: Callable[[], bool] | None = None) -> int | None:
-        """Wait for a rested connection; None when stopped or every proxy is dead."""
+    def acquire(
+        self, cancelled: Callable[[], bool] | None = None, avoid: set[int] | frozenset[int] = frozenset()
+    ) -> int | None:
+        """Wait for a rested connection; None when stopped or every proxy is dead.
+
+        Connections in ``avoid`` (the ones that just failed this search) are only used
+        when no other connection is left.
+        """
         with self._lock:
             while True:
                 if cancelled and cancelled():
@@ -581,8 +587,10 @@ class Connections:
                 if all(self._dead) or self.exhausted:
                     return None
                 now = time.monotonic()
+                others_alive = any(not self._dead[i] and i not in avoid for i in range(len(self._searchers)))
                 ready = [i for i in range(len(self._searchers))
-                         if not self._dead[i] and not self._busy[i] and self._ready_at[i] <= now]
+                         if not self._dead[i] and not self._busy[i] and self._ready_at[i] <= now
+                         and (i not in avoid or not others_alive)]
                 if ready:
                     chosen = random.choice(ready)
                     self._busy[chosen] = True
@@ -737,8 +745,9 @@ def find_website(
     last_problem = ""
     limited = False
     searches = 0
+    tried: set[int] = set()
     for attempt in range(ATTEMPTS):
-        slot = connections.acquire(cancelled)
+        slot = connections.acquire(cancelled, avoid=tried)
         if slot is None:
             if cancelled and cancelled():
                 last_problem = last_problem or "Stopped"
@@ -749,6 +758,7 @@ def find_website(
             else:
                 last_problem = "Every proxy failed; check the proxy list in Settings"
             break
+        tried.add(slot)
         lite = attempt % 2 == 1  # alternate with the lite page after a failed try
         via = connections.name(slot)
         connections.status.set(f"Searching: {company}" + (f" (try {attempt + 1})" if attempt else ""))
