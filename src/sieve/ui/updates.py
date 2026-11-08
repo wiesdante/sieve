@@ -79,6 +79,13 @@ class UpdateController(QObject):
 
     def __init__(self, context: AppContext, window: QWidget) -> None:
         super().__init__(window)
+        # Updates come from the public repository now; a token saved by an older
+        # version is no longer needed, so it is not kept on the computer.
+        try:
+            if context.credentials.get(GITHUB_TOKEN):
+                context.credentials.delete(GITHUB_TOKEN)
+        except Exception:
+            log.exception("Could not remove the old GitHub token")
         self._context = context
         self._window = window
         self._busy = False
@@ -92,8 +99,7 @@ class UpdateController(QObject):
     def check(self, manual: bool = False) -> None:
         if self._busy:
             return
-        # A token is only needed while the repository is private.
-        token = self._context.credentials.get(GITHUB_TOKEN) or ""
+        token = ""  # the repository is public
 
         self._busy = True
         self._set_status("Checking for updates...")
@@ -142,7 +148,7 @@ class UpdateController(QObject):
             self._start_download(release)
 
     def _start_download(self, release: updater.ReleaseInfo) -> None:
-        token = self._context.credentials.get(GITHUB_TOKEN) or ""
+        token = ""
         progress = QProgressDialog(
             f"Downloading Sieve {release.version}...", "Cancel", 0, 100, self._window
         )

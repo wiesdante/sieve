@@ -6,6 +6,13 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-11-08
+
+### Removed
+
+- The GitHub token setting and the "add a token" banner: the repository is public, so
+  updates need no token. A token saved by an earlier version is removed from the computer.
+
 ## [0.14.1] - 2026-11-08
 
 ### Changed
@@ -424,7 +431,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.14.1...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.14.2...HEAD
+[0.14.2]: https://github.com/wiesdante/sieve/compare/v0.14.1...v0.14.2
 [0.14.1]: https://github.com/wiesdante/sieve/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/wiesdante/sieve/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/wiesdante/sieve/compare/v0.12.2...v0.13.0

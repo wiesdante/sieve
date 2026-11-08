@@ -1,56 +1,29 @@
-"""Settings page: GitHub token, update preferences, proxies, folders."""
+"""Settings page: update preferences, proxies, folders."""
 
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDialog,
-    QFormLayout,
     QGroupBox,
     QHBoxLayout,
-    QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QTextBrowser,
     QVBoxLayout,
 )
 
-from sieve import GITHUB_REPO, paths, updater
+from sieve import paths
 from sieve.context import AppContext
-from sieve.credentials import GITHUB_TOKEN
 from sieve.proxy import ROTATION_MODES, ProxyCheckResult, check_proxy, parse_proxy_list
 from sieve.ui import theme
 from sieve.ui.tasks import run_in_background
 from sieve.ui.widgets import Page, muted_label, open_folder, primary_button
 
-TOKEN_HELP = f"""
-### How to create a GitHub token
-
-Sieve downloads updates from the private `{GITHUB_REPO}` repository. A token with
-**read-only** access is all it needs.
-
-1. On GitHub, open **Settings → Developer settings → Personal access tokens →
-   Fine-grained tokens** and click **Generate new token**.
-2. **Token name**: for example `Sieve updates`.
-3. **Expiration**: any duration you like. When it expires, just paste a new one here.
-4. **Repository access**: **Only select repositories** → `{GITHUB_REPO.split('/')[1]}`.
-5. **Permissions → Repository permissions → Contents**: **Read-only**.
-   (Metadata is added as read-only automatically.)
-6. Click **Generate token**, copy the value and paste it here.
-
-The token is stored on this computer encrypted with Windows DPAPI and can only be
-decrypted by your Windows user.
-"""
-
 
 class SettingsPage(Page):
-    token_changed = Signal()
-
     def __init__(self, context: AppContext) -> None:
         super().__init__("Settings")
         self._context = context
@@ -62,97 +35,16 @@ class SettingsPage(Page):
 
     # ---------------------------------------------------------------- updates
     def _build_updates_group(self) -> QGroupBox:
-        group = QGroupBox("GitHub && Updates")
+        group = QGroupBox("Updates")
         layout = QVBoxLayout(group)
-
-        self._token_input = QLineEdit()
-        self._token_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self._token_input.setPlaceholderText("github_pat_...")
-        show = QPushButton("Show")
-        show.setCheckable(True)
-        show.toggled.connect(
-            lambda on: (
-                self._token_input.setEchoMode(
-                    QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password
-                ),
-                show.setText("Hide" if on else "Show"),
-            )
-        )
-        token_row = QHBoxLayout()
-        token_row.addWidget(self._token_input, 1)
-        token_row.addWidget(show)
-
-        form = QFormLayout()
-        form.addRow("GitHub token", token_row)
-        layout.addLayout(form)
-
-        self._token_status = muted_label()
-        layout.addWidget(self._token_status)
-
-        buttons = QHBoxLayout()
-        save = primary_button("Save && test")
-        remove = QPushButton("Remove token")
-        help_button = QPushButton("How to create a token")
-        save.clicked.connect(self._save_token)
-        remove.clicked.connect(self._remove_token)
-        help_button.clicked.connect(self._show_token_help)
-        buttons.addWidget(save)
-        buttons.addWidget(remove)
-        buttons.addStretch(1)
-        buttons.addWidget(help_button)
-        layout.addLayout(buttons)
-
+        layout.addWidget(muted_label(
+            "New versions are published on GitHub. Sieve can check for them when it starts "
+            "and install them in place; you can also check from the About page."
+        ))
         self._auto_check = QCheckBox("Check for updates on startup")
         self._auto_check.toggled.connect(self._save_update_prefs)
         layout.addWidget(self._auto_check)
         return group
-
-    def _set_token_status(self, text: str, color: str = theme.TEXT_MUTED) -> None:
-        self._token_status.setText(text)
-        self._token_status.setStyleSheet(f"color: {color};")
-
-    def _save_token(self) -> None:
-        token = self._token_input.text().strip()
-        if not token:
-            QMessageBox.information(self, "Token", "Paste a token first.")
-            return
-        self._set_token_status("Testing token...")
-
-        def on_success(repo: str) -> None:
-            self._context.credentials.set(GITHUB_TOKEN, token)
-            self._token_input.clear()
-            self._set_token_status(f"Token saved. It has access to {repo}.", theme.SUCCESS)
-            self.token_changed.emit()
-
-        def on_error(exc: Exception) -> None:
-            message = str(exc) if isinstance(exc, updater.UpdateError) else "Unexpected error."
-            self._set_token_status(f"Token not saved: {message}", theme.DANGER)
-
-        run_in_background(updater.verify_token, token, on_success=on_success, on_error=on_error)
-
-    def _remove_token(self) -> None:
-        if not self._context.credentials.get(GITHUB_TOKEN):
-            return
-        answer = QMessageBox.question(
-            self, "Remove token", "Remove the saved GitHub token?"
-        )
-        if answer == QMessageBox.StandardButton.Yes:
-            self._context.credentials.delete(GITHUB_TOKEN)
-            self._set_token_status("No token saved.")
-            self.token_changed.emit()
-
-    def _show_token_help(self) -> None:
-        dialog = QDialog(self)
-        dialog.setWindowTitle("GitHub token")
-        dialog.resize(560, 460)
-        layout = QVBoxLayout(dialog)
-        browser = QTextBrowser()
-        browser.setMarkdown(TOKEN_HELP)
-        layout.addWidget(browser)
-        close = QPushButton("Close")
-        close.clicked.connect(dialog.accept)
-        layout.addWidget(close)
-        dialog.exec()
 
     def _save_update_prefs(self) -> None:
         self._context.settings.check_updates_on_startup = self._auto_check.isChecked()
@@ -286,7 +178,3 @@ class SettingsPage(Page):
         index = self._rotation.findData(settings.proxy_rotation)
         self._rotation.setCurrentIndex(max(index, 0))
         self._proxy_list.setPlainText("\n".join(settings.proxies))
-        if self._context.credentials.get(GITHUB_TOKEN):
-            self._set_token_status("A token is saved. Paste a new one to replace it.")
-        else:
-            self._set_token_status("No token saved.")

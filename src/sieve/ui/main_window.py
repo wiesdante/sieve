@@ -78,7 +78,6 @@ class MainWindow(QMainWindow):
         home.open_tool.connect(lambda tool_id: self.navigate(TOOL_PREFIX + tool_id))
         home.open_settings.connect(lambda: self.navigate(SETTINGS))
         settings = SettingsPage(context)
-        settings.token_changed.connect(home.refresh)
         self._add_page(HOME, home)
         self._add_page(SETTINGS, settings)
         self._add_page(ABOUT, AboutPage(self.updates, context))

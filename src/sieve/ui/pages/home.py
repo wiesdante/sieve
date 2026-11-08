@@ -1,17 +1,16 @@
-"""Home page: token reminder and an overview of the available tools."""
+"""Home page: an overview of the available tools."""
 
 from __future__ import annotations
 
 from itertools import groupby
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QVBoxLayout
 
 from sieve.context import AppContext
-from sieve.credentials import GITHUB_TOKEN
 from sieve.tools import Tool
 from sieve.ui import theme
-from sieve.ui.widgets import Page, command_name, muted_label, primary_button
+from sieve.ui.widgets import Page, command_name, muted_label
 
 
 class ToolCard(QFrame):
@@ -48,20 +47,6 @@ class HomePage(Page):
         super().__init__("Home", "One place for all your data scraping workflows.")
         self._context = context
 
-        self._banner = QFrame()
-        self._banner.setObjectName("Banner")
-        banner_layout = QHBoxLayout(self._banner)
-        banner_layout.setContentsMargins(14, 10, 14, 10)
-        banner_text = QLabel(
-            "Add a GitHub token to enable automatic updates."
-        )
-        banner_text.setWordWrap(True)
-        banner_button = primary_button("Open Settings")
-        banner_button.clicked.connect(self.open_settings)
-        banner_layout.addWidget(banner_text, 1)
-        banner_layout.addWidget(banner_button)
-        self.content.addWidget(self._banner)
-
         if not tools:
             empty = QLabel(
                 "No tools yet.\nNew tools will appear here and in the sidebar."
@@ -89,11 +74,3 @@ class HomePage(Page):
                 self.content.addLayout(grid)
 
         self.finish()
-        self.refresh()
-
-    def refresh(self) -> None:
-        self._banner.setVisible(not self._context.credentials.get(GITHUB_TOKEN))
-
-    def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
-        self.refresh()
-        super().showEvent(event)
