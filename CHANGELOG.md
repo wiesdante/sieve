@@ -6,6 +6,15 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-08
+
+### Changed
+
+- **Activation is switched on.** Sieve asks for an activation code tied to the computer;
+  the owner activates their own computers with **I'm the owner** and the passphrase.
+- New README with screenshots, and how to ask for access.
+- The license text now matches a public, view-only repository.
+
 ## [0.14.0] - 2026-11-08
 
 ### Added
@@ -410,7 +419,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - Windows installer (per-user, no administrator rights required).
 - Release pipeline that builds, smoke-tests and publishes the installer whenever the version is bumped.
 
-[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/wiesdante/sieve/compare/v0.14.1...HEAD
+[0.14.1]: https://github.com/wiesdante/sieve/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/wiesdante/sieve/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/wiesdante/sieve/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/wiesdante/sieve/compare/v0.12.1...v0.12.2

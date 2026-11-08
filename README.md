@@ -5,73 +5,109 @@
 <h1 align="center">Sieve</h1>
 
 <p align="center">
-  A desktop toolkit that brings data scraping workflows together in one app.<br>
+  A desktop toolkit for data scraping: from a list of company names to their websites,<br>
+  their contact pages and their email addresses, in one app.<br>
   <sub>by <b>wiesdante</b></sub>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6" alt="Platform">
-  <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="Python">
+  <a href="https://github.com/wiesdante/sieve/releases/latest"><img src="https://img.shields.io/github/v/release/wiesdante/sieve?color=39ff14&labelColor=0a1a0a" alt="Latest release"></a>
+  <a href="https://github.com/wiesdante/sieve/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/wiesdante/sieve/ci.yml?branch=main&label=tests&labelColor=0a1a0a" alt="Tests"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-39ff14?labelColor=0a1a0a" alt="Platform">
+  <img src="https://img.shields.io/badge/python-3.12-39ff14?labelColor=0a1a0a" alt="Python">
+</p>
+
+<p align="center">
+  <img src="docs/images/email-scraper.png" width="860" alt="Email Scraper">
 </p>
 
 ---
 
-Sieve replaces a folder full of one-off console scripts with a single desktop
-application. Each workflow lives in the app as a **tool** with its own page,
-and every tool shares the same settings, proxy pool and logging.
+Sieve replaces a folder of one-off console scripts with a single desktop application.
+Every workflow is a **tool** with its own page; tools share one proxy pool, one browser
+engine and one look, and hand their results to each other with **Send to**.
+
+> **Access:** Sieve is free to look at but not free to use. The app asks for an
+> activation code tied to your computer — see [Getting access](#getting-access).
 
 ## Tools
 
+A typical run goes left to right:
+
+```
+company names ──► Website Finder ──► Email Scraper ──► clean email list
+directory pages ─► Link Collector ──┘        ▲
+PDF brochures ──► Link & Email Extractor ────┘
+```
+
 | Tool | What it does |
 | --- | --- |
-| **Email Scraper** | Finds contact email addresses on a list of websites (pages, contact pages, common paths) in 25+ languages, with junk filtering, proxy support and an optional real browser for protected or JavaScript-only sites. |
-| **Duplicate Remover** | Removes repeated lines from pasted text while keeping the first occurrence and the original order. |
-| **Keyword Filter** | Keeps or removes lines that contain any keyword from a saved blacklist or whitelist. |
-| **Text Stripper** | Removes saved phrases such as labels and prefixes (`Email: `, `Phone: `) from every line. |
-| **Website Finder** | Finds companies' own websites by searching their names on DuckDuckGo. Skips social media, marketplaces, directories, news, job and map sites and website-builder profiles, and keeps a result only when it matches the company's name. Recognises rate limits instead of reporting "no website". |
-| **Link Collector** | Collects the links on a list of pages (directories, exhibitor lists, search results): other sites only or one home page per site, skips social and file links, saved exclude rules. |
-| **Link & Email Extractor** | Collects web links or email addresses from PDF files (clickable links and text) or pasted text. |
+| **Website Finder** | Searches company names on DuckDuckGo and keeps each company's **own** website — never its LinkedIn page, marketplace shop or directory entry. A result is accepted only when its domain is spelled by the company's name (legal forms such as Ltd., A.Ş. or GmbH ignored), its initials or the start of its words, or the home page's title names the company. Uncertain matches are shown separately, never mixed in. |
+| **Link Collector** | Collects the links on a list of pages (directories, exhibitor lists, search results): all links, other sites only, or one home page per site, without social, share and file links, with saved exclude rules. |
+| **Email Scraper** | Finds contact addresses on a list of websites. Looks for contact pages in 25+ languages, reads structured data, decodes hidden addresses (Cloudflare, ROT13, reversed text), recognises parked domains and bot checks, and opens protected or JavaScript-only sites in your browser when needed. |
+| **Link & Email Extractor** | Collects links or email addresses from PDF files (clickable links and text) or pasted text. |
+| **Duplicate Remover** | Removes repeated lines, keeping the first occurrence and the original order. |
+| **Keyword Filter** | Keeps or removes lines containing any keyword from saved whitelists and blacklists. |
+| **Text Stripper** | Removes saved phrases such as labels and prefixes from every line. |
 
-## Features
+<p align="center">
+  <img src="docs/images/website-finder.png" width="420" alt="Website Finder">
+  <img src="docs/images/link-collector.png" width="420" alt="Link Collector">
+</p>
 
-- **Tools work together** — every result can be sent to another tool with **Send to**, e.g. links
-  found in PDFs straight into Email Scraper.
-- **One app, many tools** — every scraping workflow gets its own page in the sidebar.
-- **Shared proxy pool** — configure proxies once (HTTP, HTTPS, SOCKS4/5, with or
-  without credentials), test them from the app, and let tools rotate through them.
-- **Self-updating** — Sieve checks the latest GitHub release on startup and can
-  download and install it in place, no manual setup needed.
-- **No dependencies on the target PC** — the installer ships everything, including
-  the Python runtime. Browser automation uses your default browser
-  (Chrome, Edge, Brave or Vivaldi), or the Microsoft Edge that comes with Windows.
-- **Per-user install** — installs under `%LOCALAPPDATA%`, no administrator rights required.
+## Under the hood
 
-## Installation
+- **Never mistakes a block for an empty result.** Search engines and websites answer
+  scrapers with rate limits, bot checks and parking pages. Sieve recognises each of them
+  and reports *rate limited*, *blocked* or *parked* — so "no website" and "no emails"
+  always mean exactly that.
+- **A real browser only when it helps.** Plain HTTP requests first; the system's Chrome or
+  Edge (driven by Playwright, out of sight) for blocked pages, JavaScript-only pages and
+  bot checks, keeping each site's cookies between pages.
+- **Junk filtering built for few false positives.** Addresses are checked against the
+  IANA top-level domain list, a disposable-email list refreshed monthly, placeholder and
+  automated mailboxes, and optionally the domain's mail servers (MX).
+- **Stuck-proof runs.** Sites run on daemon threads with hard time limits; one hanging
+  site never stalls a run, and **Stop** returns within seconds.
+- **Shared proxy pool.** HTTP, HTTPS and SOCKS proxies, tested from the app, rotated per
+  site and per search, with rest periods and automatic removal of dead proxies.
+- **Self-updating.** Checks GitHub Releases on startup, verifies the installer's SHA-256
+  and installs in place.
+- **Offline activation.** Codes are Ed25519 signatures tied to a machine; the signing
+  key is derived from the owner's passphrase with scrypt and never stored.
+- **Tested.** 400+ unit tests, browser tests against a real Edge/Chrome on Windows,
+  and screenshots of every page on every change.
 
-1. Open the [latest release](https://github.com/wiesdante/sieve/releases/latest)
-   and download `Sieve-Setup-<version>.exe`.
-2. Run it. Because the installer is not code-signed, Windows SmartScreen may show
-   a warning: choose **More info → Run anyway**.
-3. Launch Sieve from the Start menu or the desktop shortcut.
+## Getting access
 
-### Enabling automatic updates
+1. Download `Sieve-Setup-<version>.exe` from the
+   [latest release](https://github.com/wiesdante/sieve/releases/latest) and run it.
+   The installer is not code-signed, so Windows SmartScreen may warn: choose
+   **More info → Run anyway**.
+2. On first start Sieve shows **this computer's code**. Send it to me:
+   - Email: **wiesdant3@gmail.com**
+   - Discord: **wiesdante**
+3. Paste the activation code you receive. It works on that computer only.
 
-The repository is private, so Sieve needs a read-only GitHub token to see new releases:
+<p align="center">
+  <img src="docs/images/activation.png" width="460" alt="Activation">
+</p>
 
-1. GitHub → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
-2. **Repository access:** *Only select repositories* → `wiesdante/sieve`.
-3. **Permissions → Repository permissions → Contents:** *Read-only*.
-4. Paste the token into **Settings → GitHub & Updates** in Sieve and click **Save & test**.
+## Built with
 
-The token is encrypted with Windows DPAPI and can only be read by your Windows
-user on that machine.
+Python 3.12 · PySide6 (Qt 6) · Playwright · requests · Beautiful Soup · dnspython ·
+PyMuPDF · cryptography · PyInstaller · Inno Setup · GitHub Actions
+
+GitHub Actions run the tests on every push (including browser tests on Windows),
+render screenshots of every page, build and publish the installer when the version
+changes, and refresh the reference lists every month.
 
 ## Data locations
 
 | What | Where |
 | --- | --- |
 | Application | `%LOCALAPPDATA%\Programs\Sieve` |
-| Settings & encrypted credentials | `%APPDATA%\Sieve` |
+| Settings, saved lists and sessions | `%APPDATA%\Sieve` |
 | Logs | `%LOCALAPPDATA%\Sieve\logs` |
 | Downloaded updates | `%LOCALAPPDATA%\Sieve\updates` |
 
@@ -98,31 +134,29 @@ pyinstaller sieve.spec --noconfirm --clean
 & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=0.1.0 installer\sieve.iss
 ```
 
-More documentation:
-
-- [Adding a tool](docs/adding-a-tool.md)
-- [Release process](docs/releasing.md)
-
-## Project structure
+More documentation: [Adding a tool](docs/adding-a-tool.md) · [Release process](docs/releasing.md)
 
 ```
 src/sieve/
 ├── app.py            application bootstrap
+├── core/             scraping, filtering, search and licensing logic (no UI)
+├── tools/            the tools shown in the sidebar
+├── ui/               main window, pages, theme and dialogs
 ├── updater.py        GitHub Releases update logic
 ├── proxy.py          proxy parsing, rotation and health checks
 ├── settings.py       persistent settings (JSON)
-├── credentials.py    DPAPI-encrypted secrets
-├── tools/            the tools shown in the sidebar
-└── ui/               main window, pages, theme and update dialogs
+└── credentials.py    DPAPI-encrypted secrets
 installer/sieve.iss   Inno Setup installer script
 sieve.spec            PyInstaller build definition
-scripts/              build and release helpers
+scripts/              build, release and data helpers
 tests/                unit tests
 ```
 
 ## License
 
-Proprietary — all rights reserved. See [LICENSE](LICENSE).
+The source code is published for viewing. It is not open source: all rights are
+reserved, and using, copying or redistributing Sieve needs my permission. See
+[LICENSE](LICENSE).
 
 ### Third-party material
 
