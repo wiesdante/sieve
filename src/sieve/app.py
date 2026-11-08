@@ -71,6 +71,16 @@ def _run_smoke_test(app, window, screenshot_dir: str | None) -> int:
                 page.load_demo()
                 settle()
                 window.grab().save(str(Path(screenshot_dir) / f"{name}_demo.png"))
+    # The activation windows must at least open.
+    from sieve.ui.activation import ActivationDialog, OwnerDialog
+
+    for name, dialog in (("activation", ActivationDialog(window._context.settings, lambda: None, window)),
+                         ("owner", OwnerDialog(window))):
+        dialog.show()
+        settle()
+        if screenshot_dir:
+            dialog.grab().save(str(Path(screenshot_dir) / f"dialog_{name}.png"))
+        dialog.close()
     from sieve.tools import all_tools
 
     for tool in all_tools():
@@ -81,6 +91,18 @@ def _run_smoke_test(app, window, screenshot_dir: str | None) -> int:
             return 1
     log.info("Smoke test passed")
     return 0
+
+
+def _activated(context) -> bool:
+    """True when this computer may use the app, asking for a code if needed."""
+    from PySide6.QtWidgets import QDialog
+
+    from sieve.ui.activation import ActivationDialog, activation_required, current_license
+
+    if not activation_required() or current_license(context.settings) is not None:
+        return True
+    dialog = ActivationDialog(context.settings, context.save_settings)
+    return dialog.result() == QDialog.DialogCode.Accepted or dialog.exec() == QDialog.DialogCode.Accepted
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -107,7 +129,10 @@ def main(argv: list[str] | None = None) -> int:
     apply_theme(app)
     _install_exception_hook()
 
-    window = MainWindow(AppContext())
+    context = AppContext()
+    if not smoke_test and not _activated(context):
+        return 0
+    window = MainWindow(context)
 
     if smoke_test:
         return _run_smoke_test(app, window, screenshot_dir)

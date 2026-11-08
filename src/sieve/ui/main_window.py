@@ -81,7 +81,7 @@ class MainWindow(QMainWindow):
         settings.token_changed.connect(home.refresh)
         self._add_page(HOME, home)
         self._add_page(SETTINGS, settings)
-        self._add_page(ABOUT, AboutPage(self.updates))
+        self._add_page(ABOUT, AboutPage(self.updates, context))
 
         routing.install(
             [(tool.id, tool.name, tool.icon) for tool in self._tools.values()], self.deliver_text

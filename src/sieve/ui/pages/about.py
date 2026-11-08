@@ -7,14 +7,17 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from sieve import AUTHOR, GITHUB_REPO, __version__, paths
+from sieve.context import AppContext
+from sieve.ui.activation import OwnerDialog, license_summary
 from sieve.ui.updates import UpdateController
 from sieve.ui.widgets import Page, muted_label, open_url, primary_button
 
 
 class AboutPage(Page):
-    def __init__(self, updates: UpdateController) -> None:
+    def __init__(self, updates: UpdateController, context: AppContext | None = None) -> None:
         super().__init__("About")
         self._updates = updates
+        self._context = context
 
         card = QFrame()
         card.setObjectName("Card")
@@ -68,5 +71,28 @@ class AboutPage(Page):
         update_layout.addLayout(buttons)
         self.content.addWidget(update_card)
 
+        activation_card = QFrame()
+        activation_card.setObjectName("Card")
+        activation_layout = QVBoxLayout(activation_card)
+        activation_layout.setContentsMargins(20, 16, 20, 16)
+        heading = QLabel("Activation")
+        heading.setStyleSheet("font-weight: 600;")
+        activation_layout.addWidget(heading)
+        self._license = muted_label()
+        activation_layout.addWidget(self._license)
+        owner_row = QHBoxLayout()
+        owner = QPushButton("Activation codes...")
+        owner.setToolTip("For the owner: set up the passphrase or issue activation codes.")
+        owner.clicked.connect(lambda: OwnerDialog(self).exec())
+        owner_row.addWidget(owner)
+        owner_row.addStretch(1)
+        activation_layout.addLayout(owner_row)
+        self.content.addWidget(activation_card)
+
         updates.status_changed.connect(self._status.setText)
         self.finish()
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if self._context is not None:
+            self._license.setText(license_summary(self._context.settings))
+        super().showEvent(event)

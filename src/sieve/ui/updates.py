@@ -92,17 +92,8 @@ class UpdateController(QObject):
     def check(self, manual: bool = False) -> None:
         if self._busy:
             return
-        token = self._context.credentials.get(GITHUB_TOKEN)
-        if not token:
-            self._set_status("No GitHub token set, so updates cannot be checked.")
-            if manual:
-                QMessageBox.information(
-                    self._window,
-                    "Token required",
-                    "To check for updates, add your GitHub token "
-                    "on the Settings page first.",
-                )
-            return
+        # A token is only needed while the repository is private.
+        token = self._context.credentials.get(GITHUB_TOKEN) or ""
 
         self._busy = True
         self._set_status("Checking for updates...")

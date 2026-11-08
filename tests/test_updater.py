@@ -70,3 +70,41 @@ def test_clean_old_downloads(isolated_home):
     leftover.write_bytes(b"x")
     updater.clean_old_downloads()
     assert not leftover.exists()
+
+
+class _Response:
+    def __init__(self, status, data=None):
+        self.status_code = status
+        self._data = data or {}
+
+    def json(self):
+        return self._data
+
+
+def _fake_get(answers, seen):
+    def get(self, url, timeout=None, **kwargs):
+        seen.append((url, self.headers.get("Authorization")))
+        return answers[url.rsplit("/repos/", 1)[1]]
+    return get
+
+
+def test_public_repository_needs_no_token(monkeypatch):
+    seen = []
+    answers = {"o/r/releases/latest": _Response(200, release_json())}
+    monkeypatch.setattr(updater.requests.Session, "get", _fake_get(answers, seen))
+    release = updater.fetch_latest_release("", repo="o/r")
+    assert release.version == "1.2.0"
+    assert seen[0][1] is None  # no Authorization header
+
+
+def test_private_repository_without_token_asks_for_one(monkeypatch):
+    answers = {"o/r/releases/latest": _Response(404), "o/r": _Response(404)}
+    monkeypatch.setattr(updater.requests.Session, "get", _fake_get(answers, []))
+    with pytest.raises(updater.AuthError, match="private"):
+        updater.fetch_latest_release("", repo="o/r")
+
+
+def test_public_repository_without_releases(monkeypatch):
+    answers = {"o/r/releases/latest": _Response(404), "o/r": _Response(200, {"full_name": "o/r"})}
+    monkeypatch.setattr(updater.requests.Session, "get", _fake_get(answers, []))
+    assert updater.fetch_latest_release("", repo="o/r") is None

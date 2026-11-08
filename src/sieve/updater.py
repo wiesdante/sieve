@@ -79,8 +79,9 @@ def _session(token: str) -> requests.Session:
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": f"Sieve/{__version__}",
-        "Authorization": f"Bearer {token}",
     })
+    if token:  # a public repository needs no token
+        session.headers["Authorization"] = f"Bearer {token}"
     return session
 
 
@@ -136,7 +137,13 @@ def fetch_latest_release(token: str, repo: str = GITHUB_REPO) -> ReleaseInfo | N
     with _session(token) as session:
         response = _request(session, f"{API_ROOT}/repos/{repo}/releases/latest")
         if response.status_code == 404:
-            # Either no release exists yet or the token cannot see the repo.
+            # Either no release exists yet, or the repository is private and the token
+            # (if any) cannot see it.
+            if not token:
+                probe = _request(session, f"{API_ROOT}/repos/{repo}")
+                if probe.status_code == 404:
+                    raise AuthError("The repository is private: add a GitHub token in Settings.")
+                return None
             verify_token(token, repo)
             return None
         _raise_for_status(response)
