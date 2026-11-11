@@ -6,6 +6,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- When GitHub limits update checks, Sieve says so and asks to try again later, instead of
+  pointing to a GitHub token that is no longer used.
+
 ## [0.14.2] - 2026-11-08
 
 ### Removed

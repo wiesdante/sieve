@@ -88,23 +88,31 @@ def _fake_get(answers, seen):
     return get
 
 
-def test_public_repository_needs_no_token(monkeypatch):
+def test_latest_release_is_fetched_without_a_token(monkeypatch):
     seen = []
     answers = {"o/r/releases/latest": _Response(200, release_json())}
     monkeypatch.setattr(updater.requests.Session, "get", _fake_get(answers, seen))
-    release = updater.fetch_latest_release("", repo="o/r")
+    release = updater.fetch_latest_release(repo="o/r")
     assert release.version == "1.2.0"
     assert seen[0][1] is None  # no Authorization header
 
 
-def test_private_repository_without_token_asks_for_one(monkeypatch):
-    answers = {"o/r/releases/latest": _Response(404), "o/r": _Response(404)}
+def test_repository_without_releases(monkeypatch):
+    answers = {"o/r/releases/latest": _Response(404)}
     monkeypatch.setattr(updater.requests.Session, "get", _fake_get(answers, []))
-    with pytest.raises(updater.AuthError, match="private"):
-        updater.fetch_latest_release("", repo="o/r")
+    assert updater.fetch_latest_release(repo="o/r") is None
 
 
-def test_public_repository_without_releases(monkeypatch):
-    answers = {"o/r/releases/latest": _Response(404), "o/r": _Response(200, {"full_name": "o/r"})}
+@pytest.mark.parametrize("status", [403, 429])
+def test_rate_limited_check_says_so(monkeypatch, status):
+    answers = {"o/r/releases/latest": _Response(status)}
     monkeypatch.setattr(updater.requests.Session, "get", _fake_get(answers, []))
-    assert updater.fetch_latest_release("", repo="o/r") is None
+    with pytest.raises(updater.UpdateError, match="limiting"):
+        updater.fetch_latest_release(repo="o/r")
+
+
+def test_server_error_is_reported(monkeypatch):
+    answers = {"o/r/releases/latest": _Response(500)}
+    monkeypatch.setattr(updater.requests.Session, "get", _fake_get(answers, []))
+    with pytest.raises(updater.UpdateError, match="HTTP 500"):
+        updater.fetch_latest_release(repo="o/r")

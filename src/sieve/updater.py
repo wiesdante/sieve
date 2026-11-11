@@ -1,9 +1,9 @@
-"""Self-update support backed by GitHub Releases of a private repository.
+"""Self-update support backed by the repository's public GitHub Releases.
 
 The flow is:
 
-1. ``fetch_latest_release`` asks the GitHub API for the latest release,
-   authenticated with the user's fine-grained token (read-only Contents).
+1. ``fetch_latest_release`` asks the GitHub API for the latest release; the
+   repository is public, so no sign-in is needed.
 2. If it is newer than the running version, ``download_installer`` streams the
    ``Sieve-Setup-<version>.exe`` asset to the local updates folder and verifies
    its size and SHA-256 digest.
@@ -42,10 +42,6 @@ class UpdateError(Exception):
     """Any failure while checking for or downloading an update."""
 
 
-class AuthError(UpdateError):
-    """The token is missing, invalid or lacks access to the repository."""
-
-
 class UpdateCancelledError(UpdateError):
     pass
 
@@ -73,23 +69,20 @@ def is_newer(candidate: str, current: str = __version__) -> bool:
     return parse_version(candidate) > parse_version(current)
 
 
-def _session(token: str) -> requests.Session:
+def _session() -> requests.Session:
     session = requests.Session()
     session.headers.update({
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": f"Sieve/{__version__}",
     })
-    if token:  # a public repository needs no token
-        session.headers["Authorization"] = f"Bearer {token}"
     return session
 
 
 def _raise_for_status(response: requests.Response) -> None:
-    if response.status_code == 401:
-        raise AuthError("The GitHub token is invalid or has expired.")
-    if response.status_code == 403:
-        raise AuthError("GitHub refused the request. Check the token's permissions.")
+    if response.status_code in (403, 429):
+        # Without a sign-in GitHub allows a limited number of API requests per hour.
+        raise UpdateError("GitHub is limiting update checks right now. Please try again later.")
     if response.status_code >= 400:
         raise UpdateError(f"GitHub returned an unexpected response (HTTP {response.status_code}).")
 
@@ -99,16 +92,6 @@ def _request(session: requests.Session, url: str, **kwargs) -> requests.Response
         return session.get(url, timeout=TIMEOUT, **kwargs)
     except requests.RequestException as exc:
         raise UpdateError("Could not reach GitHub. Check your internet connection.") from exc
-
-
-def verify_token(token: str, repo: str = GITHUB_REPO) -> str:
-    """Return the repository's full name if the token can read it."""
-    with _session(token) as session:
-        response = _request(session, f"{API_ROOT}/repos/{repo}")
-    if response.status_code == 404:
-        raise AuthError("The token has no access to this repository.")
-    _raise_for_status(response)
-    return response.json().get("full_name", repo)
 
 
 def release_from_json(data: dict) -> ReleaseInfo:
@@ -132,27 +115,18 @@ def release_from_json(data: dict) -> ReleaseInfo:
     raise UpdateError(f"Release {tag} has no installer attached.")
 
 
-def fetch_latest_release(token: str, repo: str = GITHUB_REPO) -> ReleaseInfo | None:
+def fetch_latest_release(repo: str = GITHUB_REPO) -> ReleaseInfo | None:
     """Return the latest published release, or ``None`` if there is none yet."""
-    with _session(token) as session:
+    with _session() as session:
         response = _request(session, f"{API_ROOT}/repos/{repo}/releases/latest")
-        if response.status_code == 404:
-            # Either no release exists yet, or the repository is private and the token
-            # (if any) cannot see it.
-            if not token:
-                probe = _request(session, f"{API_ROOT}/repos/{repo}")
-                if probe.status_code == 404:
-                    raise AuthError("The repository is private: add a GitHub token in Settings.")
-                return None
-            verify_token(token, repo)
-            return None
-        _raise_for_status(response)
-        return release_from_json(response.json())
+    if response.status_code == 404:
+        return None
+    _raise_for_status(response)
+    return release_from_json(response.json())
 
 
 def download_installer(
     release: ReleaseInfo,
-    token: str,
     repo: str = GITHUB_REPO,
     progress: ProgressCallback | None = None,
     cancelled: CancelCheck | None = None,
@@ -163,9 +137,8 @@ def download_installer(
 
     digest = hashlib.sha256()
     received = 0
-    with _session(token) as session:
-        # The API answers with a redirect to a storage host; requests drops the
-        # Authorization header when following it, which is what GitHub expects.
+    with _session() as session:
+        # The API answers with a redirect to GitHub's storage host, which requests follows.
         response = _request(
             session, url, headers={"Accept": "application/octet-stream"}, stream=True
         )

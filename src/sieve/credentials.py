@@ -1,4 +1,4 @@
-"""Encrypted storage for secrets such as the GitHub token.
+"""Encrypted storage for secrets such as API keys and logins.
 
 On Windows, values are encrypted with DPAPI (``CryptProtectData``), so they can
 only be decrypted by the same Windows user on the same machine. Other
@@ -17,6 +17,8 @@ from sieve import paths
 
 log = logging.getLogger(__name__)
 
+#: Name of the GitHub token saved by versions before 0.14.2. Updates no longer need it;
+#: it is only kept so a token left on the computer can be removed.
 GITHUB_TOKEN = "github_token"
 
 if sys.platform == "win32":

@@ -99,13 +99,10 @@ class UpdateController(QObject):
     def check(self, manual: bool = False) -> None:
         if self._busy:
             return
-        token = ""  # the repository is public
-
         self._busy = True
         self._set_status("Checking for updates...")
         run_in_background(
             updater.fetch_latest_release,
-            token,
             on_success=lambda release: self._on_checked(release, manual),
             on_error=lambda exc: self._on_check_failed(exc, manual),
         )
@@ -148,7 +145,6 @@ class UpdateController(QObject):
             self._start_download(release)
 
     def _start_download(self, release: updater.ReleaseInfo) -> None:
-        token = ""
         progress = QProgressDialog(
             f"Downloading Sieve {release.version}...", "Cancel", 0, 100, self._window
         )
@@ -187,7 +183,6 @@ class UpdateController(QObject):
         self._download = run_in_background(
             updater.download_installer,
             release,
-            token,
             on_success=on_success,
             on_error=on_error,
             on_progress=on_progress,
